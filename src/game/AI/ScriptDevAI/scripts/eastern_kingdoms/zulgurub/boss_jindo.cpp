@@ -21,7 +21,7 @@ SDComment: Mind Control not working because of core bug. Shades invisible is rem
 SDCategory: Zul'Gurub
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "zulgurub.h"
 
 enum
@@ -88,7 +88,7 @@ struct boss_jindoAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Brain Wash Totem Timer
@@ -115,7 +115,7 @@ struct boss_jindoAI : public ScriptedAI
         // Hex Timer
         if (m_uiHexTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HEX) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HEX) == CAST_OK)
                 m_uiHexTimer = urand(12000, 20000);
         }
         else
@@ -127,7 +127,7 @@ struct boss_jindoAI : public ScriptedAI
             // random target except the tank
             Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1);
             if (!pTarget)
-                pTarget = m_creature->getVictim();
+                pTarget = m_creature->GetVictim();
 
             if (DoCastSpellIfCan(pTarget, SPELL_DELUSIONS_OF_JINDO) == CAST_OK)
             {
@@ -196,21 +196,19 @@ struct mob_healing_wardAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_jindo(Creature* pCreature)
+UnitAI* GetAI_boss_jindo(Creature* pCreature)
 {
     return new boss_jindoAI(pCreature);
 }
 
-CreatureAI* GetAI_mob_healing_ward(Creature* pCreature)
+UnitAI* GetAI_mob_healing_ward(Creature* pCreature)
 {
     return new mob_healing_wardAI(pCreature);
 }
 
 void AddSC_boss_jindo()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_jindo";
     pNewScript->GetAI = &GetAI_boss_jindo;
     pNewScript->RegisterSelf();

@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Stratholme
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -50,7 +50,7 @@ struct boss_maleki_the_pallidAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Frostbolt
@@ -105,16 +105,14 @@ struct boss_maleki_the_pallidAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_maleki_the_pallid(Creature* pCreature)
+UnitAI* GetAI_boss_maleki_the_pallid(Creature* pCreature)
 {
     return new boss_maleki_the_pallidAI(pCreature);
 }
 
 void AddSC_boss_maleki_the_pallid()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_maleki_the_pallid";
     pNewScript->GetAI = &GetAI_boss_maleki_the_pallid;
     pNewScript->RegisterSelf();

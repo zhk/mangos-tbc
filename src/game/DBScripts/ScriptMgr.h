@@ -47,7 +47,7 @@ enum ScriptCommand                                          // resSource, resTar
     SCRIPT_COMMAND_QUEST_EXPLORED           = 7,            // one from source or target must be Player, another GO/Creature, datalong=quest_id, datalong2=distance or 0
     SCRIPT_COMMAND_KILL_CREDIT              = 8,            // source or target with Player, datalong = creature entry (or 0 for target-entry), datalong2 = bool (0=personal credit, 1=group credit)
     SCRIPT_COMMAND_RESPAWN_GAMEOBJECT       = 9,            // source = any, datalong=db_guid, datalong2=despawn_delay
-    SCRIPT_COMMAND_TEMP_SPAWN_CREATURE      = 10,           // source = any, datalong=creature entry, datalong2=despawn_delay, datalong3=pathId
+    SCRIPT_COMMAND_TEMP_SPAWN_CREATURE      = 10,           // source = any, datalong=creature entry, datalong2=despawn_delay, datalong3=pathId, text1 - setRun - 1, text2 - faction ID, text3 - modelId
     // data_flags & SCRIPT_FLAG_COMMAND_ADDITIONAL = summon active
     // dataint = (bool) setRun; 0 = off (default), 1 = on
     SCRIPT_COMMAND_OPEN_DOOR                = 11,           // datalong=db_guid (or not provided), datalong2=reset_delay
@@ -62,7 +62,7 @@ enum ScriptCommand                                          // resSource, resTar
     SCRIPT_COMMAND_CREATE_ITEM              = 17,           // source or target must be player, datalong = item entry, datalong2 = amount
     SCRIPT_COMMAND_DESPAWN_SELF             = 18,           // resSource = Creature, datalong = despawn delay
     SCRIPT_COMMAND_PLAY_MOVIE               = 19,           // target can only be a player, datalog = movie id
-    SCRIPT_COMMAND_MOVEMENT                 = 20,           // resSource = Creature. datalong = MovementType (0:idle, 1:random or 2:waypoint), datalong2 = wander-distance/pathId
+    SCRIPT_COMMAND_MOVEMENT                 = 20,           // resSource = Creature. datalong = MovementType (0:idle, 1:random or 2:waypoint), datalong2 = wander-distance/pathId, datalong3 = timer
     // data_flags &  SCRIPT_FLAG_COMMAND_ADDITIONAL = Random-movement around current position
     SCRIPT_COMMAND_SET_ACTIVEOBJECT         = 21,           // resSource = Creature
     // datalong=bool 0=off, 1=on
@@ -126,6 +126,7 @@ enum ScriptCommand                                          // resSource, resTar
     // datalong=spellid
     // datalong2=castFlags, enum TriggerCastFlags
     // dataint1-3 define the &bp value for the spell. At least one field is required.
+    SCRIPT_COMMAND_INTERRUPT_SPELL          = 47,           // datalong = SpellType enum CurrentSpellTypes
 };
 
 #define MAX_TEXT_ID 4                                       // used for SCRIPT_COMMAND_TALK, SCRIPT_COMMAND_EMOTE, SCRIPT_COMMAND_CAST_SPELL, SCRIPT_COMMAND_TERMINATE_SCRIPT
@@ -273,6 +274,7 @@ struct ScriptInfo
         {
             uint32 movementType;                            // datalong
             uint32 wanderORpathId;                          // datalong2
+            uint32 timer;                                   // datalong3
         } movement;
 
         struct                                              // SCRIPT_COMMAND_SET_ACTIVEOBJECT (21)
@@ -367,6 +369,7 @@ struct ScriptInfo
         {
             uint32 maxDist;                                 // datalong
             uint32 minDist;                                 // datalong2
+            uint32 fixedDist;                               // datalong3
         } moveDynamic;
 
         struct                                              // SCRIPT_COMMAND_SEND_MAIL (38)
@@ -395,7 +398,6 @@ struct ScriptInfo
         struct                                              // SCRIPT_COMMAND_UPDATE_TEMPLATE (44)
         {
             uint32 newTemplate;                             // datalong
-            uint32 newFactionTeam;                          // datalong2
         } updateTemplate;
 
         struct                                              // SCRIPT_COMMAND_START_RELAY_SCRIPT
@@ -409,6 +411,11 @@ struct ScriptInfo
             uint32 spellId;                                 // datalong
             uint32 castFlags;                               // datalong2
         } castCustomSpell;
+
+        struct                                              // SCRIPT_COMMAND_INTERRUPT_SPELL (47)
+        {
+            uint32 currentSpellType;                        // datalong
+        } interruptSpell;
 
         struct
         {
@@ -427,6 +434,13 @@ struct ScriptInfo
     float y;
     float z;
     float o;
+    uint32 condition_id;
+
+    ScriptInfo() : id(0), delay(0), command(0), buddyEntry(0), searchRadiusOrGuid(0), data_flags(0), x(0), y(0), z(0), o(0), condition_id(0)
+    {
+        memset(raw.data, 0, sizeof(raw.data));
+        memset(textId, 0, sizeof(textId));
+    }
 
     // helpers
     uint32 GetGOGuid() const
@@ -460,6 +474,11 @@ struct ScriptInfo
         }
     }
 
+    bool IsDeadOrDespawnedBuddy() const
+    {
+        return (data_flags & SCRIPT_FLAG_BUDDY_IS_DESPAWNED) != 0;
+    }
+
     bool HasAdditionalScriptFlag() const
     {
         switch (command)
@@ -468,6 +487,7 @@ struct ScriptInfo
             case SCRIPT_COMMAND_TEMP_SPAWN_CREATURE:
             case SCRIPT_COMMAND_CAST_SPELL:
             case SCRIPT_COMMAND_PLAY_SOUND:
+            case SCRIPT_COMMAND_CREATE_ITEM:
             case SCRIPT_COMMAND_MOVEMENT:
             case SCRIPT_COMMAND_MORPH_TO_ENTRY_OR_MODEL:
             case SCRIPT_COMMAND_MOUNT_TO_ENTRY_OR_MODEL:

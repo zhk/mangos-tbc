@@ -21,7 +21,7 @@ SDComment: Vanish spell is replaced by workaround; Timers
 SDCategory: Zul'Gurub
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "zulgurub.h"
 
 /* ContentData
@@ -97,9 +97,13 @@ struct boss_arlokkAI : public ScriptedAI
     void Aggro(Unit* /*pWho*/) override
     {
         DoScriptText(SAY_AGGRO, m_creature);
-        if ((m_pTrigger1 = m_pInstance->SelectRandomPantherTrigger(true)))
+
+        m_pTrigger1 = m_pInstance->SelectRandomPantherTrigger(true);
+        if (m_pTrigger1)
             m_pTrigger1->CastSpell(m_pTrigger1, SPELL_SUMMON_ZULIAN_PROWLERS, TRIGGERED_NONE);
-        if ((m_pTrigger2 = m_pInstance->SelectRandomPantherTrigger(false)))
+
+        m_pTrigger2 = m_pInstance->SelectRandomPantherTrigger(false);
+        if (m_pTrigger2)
             m_pTrigger2->CastSpell(m_pTrigger2, SPELL_SUMMON_ZULIAN_PROWLERS, TRIGGERED_NONE);
     }
 
@@ -142,7 +146,7 @@ struct boss_arlokkAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiVisibleTimer)
@@ -196,8 +200,8 @@ struct boss_arlokkAI : public ScriptedAI
             {
                 if (DoCastSpellIfCan(m_creature, SPELL_GOUGE) == CAST_OK)
                 {
-                    if (m_creature->getThreatManager().getThreat(m_creature->getVictim()))
-                        m_creature->getThreatManager().modifyThreatPercent(m_creature->getVictim(), -80);
+                    if (m_creature->getThreatManager().getThreat(m_creature->GetVictim()))
+                        m_creature->getThreatManager().modifyThreatPercent(m_creature->GetVictim(), -80);
 
                     m_uiGougeTimer = urand(17000, 27000);
                 }
@@ -222,7 +226,7 @@ struct boss_arlokkAI : public ScriptedAI
         {
             if (m_uiRavageTimer < uiDiff)
             {
-                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_RAVAGE) == CAST_OK)
+                if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_RAVAGE) == CAST_OK)
                     m_uiRavageTimer = urand(10000, 15000);
             }
             else
@@ -230,7 +234,7 @@ struct boss_arlokkAI : public ScriptedAI
 
             if (m_uiTrashTimer < uiDiff)
             {
-                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_TRASH) == CAST_OK)
+                if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_TRASH) == CAST_OK)
                     m_uiTrashTimer = urand(13000, 15000);
             }
             else
@@ -298,7 +302,7 @@ struct npc_zulian_prowlerAI : public ScriptedAI
             for (GuidList::const_iterator itr = m_lProwlerGUIDList.begin(); itr != m_lProwlerGUIDList.end(); ++itr)
             {
                 if (Unit* pProwler = m_creature->GetMap()->GetUnit(*itr))
-                    if (pProwler->isAlive())
+                    if (pProwler->IsAlive())
                         count++;
             }
 
@@ -317,12 +321,12 @@ struct npc_zulian_prowlerAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_arlokk(Creature* pCreature)
+UnitAI* GetAI_boss_arlokk(Creature* pCreature)
 {
     return new boss_arlokkAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_zulian_prowler(Creature* pCreature)
+UnitAI* GetAI_npc_zulian_prowler(Creature* pCreature)
 {
     return new npc_zulian_prowlerAI(pCreature);
 }
@@ -342,9 +346,7 @@ bool GOUse_go_gong_of_bethekk(Player* /*pPlayer*/, GameObject* pGo)
 
 void AddSC_boss_arlokk()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_arlokk";
     pNewScript->GetAI = &GetAI_boss_arlokk;
     pNewScript->RegisterSelf();

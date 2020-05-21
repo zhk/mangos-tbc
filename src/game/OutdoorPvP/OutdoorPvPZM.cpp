@@ -39,8 +39,8 @@ OutdoorPvPZM::OutdoorPvPZM() : OutdoorPvP(),
     m_towerMapState[0] = WORLD_STATE_ZM_BEACON_EAST_NEUTRAL;
     m_towerMapState[1] = WORLD_STATE_ZM_BEACON_WEST_NEUTRAL;
 
-    for (uint8 i = 0; i < MAX_ZM_TOWERS; ++i)
-        m_towerOwner[i] = TEAM_NONE;
+    for (auto& i : m_towerOwner)
+        i = TEAM_NONE;
 
     for (uint8 i = 0; i < PVP_TEAM_COUNT; ++i)
     {
@@ -148,18 +148,15 @@ void OutdoorPvPZM::HandleGameObjectCreate(GameObject* go)
 // Cast player spell on opponent kill
 void OutdoorPvPZM::HandlePlayerKillInsideArea(Player* player)
 {
-    for (uint8 i = 0; i < MAX_ZM_TOWERS; ++i)
+    for (auto m_towerBanner : m_towerBanners)
     {
-        if (GameObject* capturePoint = player->GetMap()->GetGameObject(m_towerBanners[i]))
+        if (GameObject* capturePoint = player->GetMap()->GetGameObject(m_towerBanner))
         {
             // check capture point range
             GameObjectInfo const* info = capturePoint->GetGOInfo();
             if (info && player->IsWithinDistInMap(capturePoint, info->capturePoint.radius))
             {
-                // check capture point team
-                if (player->GetTeam() == m_towerOwner[i])
-                    player->CastSpell(player, player->GetTeam() == ALLIANCE ? SPELL_ZANGA_TOWER_TOKEN_ALLIANCE : SPELL_ZANGA_TOWER_TOKEN_HORDE, TRIGGERED_OLD_TRIGGERED);
-
+                player->CastSpell(player, player->GetTeam() == ALLIANCE ? SPELL_ZANGA_TOWER_TOKEN_ALLIANCE : SPELL_ZANGA_TOWER_TOKEN_HORDE, TRIGGERED_OLD_TRIGGERED);
                 return;
             }
         }
@@ -167,7 +164,7 @@ void OutdoorPvPZM::HandlePlayerKillInsideArea(Player* player)
 }
 
 // process the capture events
-bool OutdoorPvPZM::HandleEvent(uint32 eventId, GameObject* go)
+bool OutdoorPvPZM::HandleEvent(uint32 eventId, GameObject* go, Unit* /*invoker*/)
 {
     for (uint8 i = 0; i < MAX_ZM_TOWERS; ++i)
     {
@@ -264,7 +261,7 @@ bool OutdoorPvPZM::ProcessCaptureEvent(GameObject* go, uint32 towerId, Team team
 
     SendUpdateWorldState(m_towerMapState[towerId], WORLD_STATE_REMOVE);
     m_towerMapState[towerId] = newMapState;
-    SendUpdateWorldState(m_towerMapState[towerId], WORLD_STATE_ADD);;
+    SendUpdateWorldState(m_towerMapState[towerId], WORLD_STATE_ADD);
 
     // update capture point owner
     m_towerOwner[towerId] = team;
@@ -400,7 +397,7 @@ void OutdoorPvPZM::SetBeaconArtKit(const WorldObject* objRef, ObjectGuid creatur
 }
 
 // Check condition for ZM flag NPCs
-bool OutdoorPvPZM::IsConditionFulfilled(Player const* source, uint32 conditionId, WorldObject const* conditionSource, uint32 conditionSourceType)
+bool OutdoorPvPZM::IsConditionFulfilled(Player const* /*source*/, uint32 conditionId, WorldObject const* /*conditionSource*/, uint32 /*conditionSourceType*/)
 {
     switch (conditionId)
     {

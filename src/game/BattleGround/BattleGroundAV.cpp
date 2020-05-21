@@ -24,7 +24,7 @@
 #include "Entities/GameObject.h"
 #include "Tools/Language.h"
 #include "WorldPacket.h"
-#include "Server/DBCStores.h"                                   // TODO REMOVE this when graveyard handling for pvp is updated
+#include "Globals/ObjectMgr.h"
 
 BattleGroundAV::BattleGroundAV(): m_HonorMapComplete(0), m_RepTowerDestruction(0), m_RepCaptain(0), m_RepBoss(0), m_RepOwnedGrave(0), m_RepOwnedMine(0), m_RepSurviveCaptain(0), m_RepSurviveTower(0)
 {
@@ -305,9 +305,9 @@ void BattleGroundAV::EndBattleGround(Team winner)
         if (m_Nodes[i].State == POINT_CONTROLLED && m_Nodes[i].Owner != BG_AV_TEAM_NEUTRAL)
             ++graves_owned[m_Nodes[i].Owner];
 
-    for (uint8 i = 0; i < BG_AV_MAX_MINES; ++i)
-        if (m_Mine_Owner[i] != BG_AV_TEAM_NEUTRAL)
-            ++mines_owned[m_Mine_Owner[i]];
+    for (auto& i : m_Mine_Owner)
+        if (i != BG_AV_TEAM_NEUTRAL)
+            ++mines_owned[i];
 
     // now we have the values give the honor/reputation to the teams:
     Team team[PVP_TEAM_COUNT]      = { ALLIANCE, HORDE };
@@ -589,12 +589,11 @@ void BattleGroundAV::EventPlayerAssaultsPoint(Player* player, BG_AV_Nodes node)
 
 void BattleGroundAV::FillInitialWorldStates(WorldPacket& data, uint32& count)
 {
-    bool stateok;
     for (uint8 i = BG_AV_NODES_FIRSTAID_STATION; i < BG_AV_NODES_MAX; ++i)
     {
         for (uint8 j = 0; j < BG_AV_MAX_STATES; ++j)
         {
-            stateok = (m_Nodes[i].State == j);
+            bool stateok = (m_Nodes[i].State == j);
             FillInitialWorldState(data, count, BG_AV_NodeWorldStates[i][GetWorldStateType(j, BG_AV_TEAM_ALLIANCE)],
                                   m_Nodes[i].Owner == BG_AV_TEAM_ALLIANCE && stateok);
             FillInitialWorldState(data, count, BG_AV_NodeWorldStates[i][GetWorldStateType(j, BG_AV_TEAM_HORDE)],
@@ -659,7 +658,7 @@ WorldSafeLocsEntry const* BattleGroundAV::GetClosestGraveYard(Player* plr)
         {
             if (m_Nodes[i].Owner != teamIdx || m_Nodes[i].State != POINT_CONTROLLED)
                 continue;
-            WorldSafeLocsEntry const* entry = sWorldSafeLocsStore.LookupEntry(BG_AV_GraveyardIds[i]);
+            WorldSafeLocsEntry const* entry = sWorldSafeLocsStore.LookupEntry<WorldSafeLocsEntry>(BG_AV_GraveyardIds[i]);
             if (!entry)
                 continue;
             float dist = (entry->x - x) * (entry->x - x) + (entry->y - y) * (entry->y - y);
@@ -672,7 +671,7 @@ WorldSafeLocsEntry const* BattleGroundAV::GetClosestGraveYard(Player* plr)
     }
     // If not, place ghost in the starting-cave
     if (!good_entry)
-        good_entry = sWorldSafeLocsStore.LookupEntry(BG_AV_GraveyardIds[teamIdx + 7]);
+        good_entry = sWorldSafeLocsStore.LookupEntry<WorldSafeLocsEntry>(BG_AV_GraveyardIds[teamIdx + 7]);
 
     return good_entry;
 }

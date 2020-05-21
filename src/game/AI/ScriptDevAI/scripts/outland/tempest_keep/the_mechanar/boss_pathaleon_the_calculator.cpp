@@ -21,7 +21,7 @@ SDComment: Timers may need update.
 SDCategory: Tempest Keep, The Mechanar
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "mechanar.h"
 
 enum
@@ -117,19 +117,19 @@ struct boss_pathaleon_the_calculatorAI : public ScriptedAI
 
     void JustSummoned(Creature* pSummoned) override
     {
-        if (m_creature->getVictim())
-            pSummoned->AI()->AttackStart(m_creature->getVictim());
+        if (m_creature->GetVictim())
+            pSummoned->AI()->AttackStart(m_creature->GetVictim());
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiManaTapTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_MANA_TAP, SELECT_FLAG_POWER_MANA))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_MANA_TAP, SELECT_FLAG_PLAYER | SELECT_FLAG_POWER_MANA))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_MANA_TAP) == CAST_OK)
                     m_uiManaTapTimer = urand(16000, 34000);
@@ -148,7 +148,7 @@ struct boss_pathaleon_the_calculatorAI : public ScriptedAI
 
         if (m_uiDominationTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_DOMINATION) == CAST_OK)
                 {
@@ -214,24 +214,27 @@ struct mob_nether_wraithAI : public ScriptedAI
     mob_nether_wraithAI(Creature* pCreature) : ScriptedAI(pCreature) {Reset();}
 
     uint32 m_uiArcaneMissilesTimer;
-    bool m_bHasDetonated;
 
     void Reset() override
     {
         m_uiArcaneMissilesTimer = urand(1000, 4000);
-        m_bHasDetonated         = false;
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        m_creature->CastSpell(nullptr, SPELL_DETONATION, TRIGGERED_OLD_TRIGGERED);
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiArcaneMissilesTimer < uiDiff)
         {
-            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1);
+            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER);
             if (!pTarget)
-                pTarget = m_creature->getVictim();
+                pTarget = m_creature->GetVictim();
 
             if (pTarget)
             {
@@ -242,36 +245,23 @@ struct mob_nether_wraithAI : public ScriptedAI
         else
             m_uiArcaneMissilesTimer -= uiDiff;
 
-        if (!m_bHasDetonated && m_creature->GetHealthPercent() < 10.0f)
-        {
-            if (DoCastSpellIfCan(m_creature, SPELL_DETONATION, CAST_TRIGGERED) == CAST_OK)
-            {
-                // Selfkill after the detonation
-                m_creature->DealDamage(m_creature, m_creature->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NONE, nullptr, false);
-                m_bHasDetonated = true;
-                return;
-            }
-        }
-
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_boss_pathaleon_the_calculator(Creature* pCreature)
+UnitAI* GetAI_boss_pathaleon_the_calculator(Creature* pCreature)
 {
     return new boss_pathaleon_the_calculatorAI(pCreature);
 }
 
-CreatureAI* GetAI_mob_nether_wraith(Creature* pCreature)
+UnitAI* GetAI_mob_nether_wraith(Creature* pCreature)
 {
     return new mob_nether_wraithAI(pCreature);
 }
 
 void AddSC_boss_pathaleon_the_calculator()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_pathaleon_the_calculator";
     pNewScript->GetAI = &GetAI_boss_pathaleon_the_calculator;
     pNewScript->RegisterSelf();

@@ -66,7 +66,7 @@ void OutdoorPvPSI::HandlePlayerLeaveZone(Player* player, bool isMainZone)
 // Handle case when player returns a silithyst
 bool OutdoorPvPSI::HandleAreaTrigger(Player* player, uint32 triggerId)
 {
-    if (player->isGameMaster() || player->isDead())
+    if (player->isGameMaster() || player->IsDead())
         return false;
 
     switch (triggerId)
@@ -141,7 +141,7 @@ bool OutdoorPvPSI::HandleAreaTrigger(Player* player, uint32 triggerId)
     // reward the player
     player->CastSpell(player, SPELL_TRACES_OF_SILITHYST, TRIGGERED_OLD_TRIGGERED);
     player->RewardHonor(nullptr, 1, HONOR_REWARD_SILITHYST);
-    player->GetReputationMgr().ModifyReputation(sFactionStore.LookupEntry(FACTION_CENARION_CIRCLE), REPUTATION_REWARD_SILITHYST);
+    player->GetReputationMgr().ModifyReputation(sFactionStore.LookupEntry<FactionEntry>(FACTION_CENARION_CIRCLE), REPUTATION_REWARD_SILITHYST);
 
     return true;
 }

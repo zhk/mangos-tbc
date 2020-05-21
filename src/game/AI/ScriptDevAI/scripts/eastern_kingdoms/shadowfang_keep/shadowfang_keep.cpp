@@ -29,9 +29,10 @@ boss_arugal
 npc_deathstalker_vincent
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "shadowfang_keep.h"
+#include "Spells/Scripts/SpellScript.h"
 
 /*######
 ## npc_shadowfang_prisoner
@@ -128,13 +129,12 @@ struct npc_shadowfang_prisonerAI : public npc_escortAI
         {
             if (pWho->GetEntry() == NPC_ASH || pWho->GetEntry() == NPC_ADA)
                 return;
-            else
-                ScriptedAI::AttackStart(pWho);
+            ScriptedAI::AttackStart(pWho);
         }
     }
 };
 
-CreatureAI* GetAI_npc_shadowfang_prisoner(Creature* pCreature)
+UnitAI* GetAI_npc_shadowfang_prisoner(Creature* pCreature)
 {
     return new npc_shadowfang_prisonerAI(pCreature);
 }
@@ -166,11 +166,6 @@ bool GossipSelect_npc_shadowfang_prisoner(Player* pPlayer, Creature* pCreature, 
 ## mob_arugal_voidwalker
 ######*/
 
-struct Waypoint
-{
-    float fX, fY, fZ;
-};
-
 // Cordinates for voidwalker spawns
 static const Waypoint VWWaypoints[] =
 {
@@ -200,7 +195,7 @@ enum
 
 struct mob_arugal_voidwalkerAI : public ScriptedAI
 {
-    mob_arugal_voidwalkerAI(Creature* pCreature) : ScriptedAI(pCreature)
+    mob_arugal_voidwalkerAI(Creature* pCreature) : ScriptedAI(pCreature), m_uiResetTimer(0), m_uiDarkOffering(0), m_uiPosition(0), m_bWPDone(false)
     {
         m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
         m_bIsLeader = false;
@@ -221,26 +216,26 @@ struct mob_arugal_voidwalkerAI : public ScriptedAI
         m_bWPDone = true;
 
         Creature* pLeader = m_creature->GetMap()->GetCreature(m_leaderGuid);
-        if (pLeader && pLeader->isAlive())
+        if (pLeader && pLeader->IsAlive())
         {
             m_creature->GetMotionMaster()->MoveFollow(pLeader, 1.0f, M_PI / 2 * m_uiPosition);
         }
         else
         {
-            std::list<Creature*> lVoidwalkerList;
+            CreatureList lVoidwalkerList;
             Creature* pNewLeader = nullptr;
             uint8 uiHighestPosition = 0;
             GetCreatureListWithEntryInGrid(lVoidwalkerList, m_creature, NPC_VOIDWALKER, 50.0f);
-            for (std::list<Creature*>::iterator itr = lVoidwalkerList.begin(); itr != lVoidwalkerList.end(); ++itr)
+            for (auto& itr : lVoidwalkerList)
             {
-                if ((*itr)->isAlive())
+                if (itr->IsAlive())
                 {
-                    if (mob_arugal_voidwalkerAI* pVoidwalkerAI = dynamic_cast<mob_arugal_voidwalkerAI*>((*itr)->AI()))
+                    if (mob_arugal_voidwalkerAI* pVoidwalkerAI = dynamic_cast<mob_arugal_voidwalkerAI*>(itr->AI()))
                     {
                         uint8 uiPosition = pVoidwalkerAI->GetPosition();
                         if (uiPosition > uiHighestPosition)
                         {
-                            pNewLeader = (*itr);
+                            pNewLeader = itr;
                             uiHighestPosition = uiPosition;
                         }
                     }
@@ -260,7 +255,6 @@ struct mob_arugal_voidwalkerAI : public ScriptedAI
             }
             else
             {
-                pNewLeader = m_creature;
                 m_bIsLeader = true;
                 m_bWPDone = true;
             }
@@ -276,7 +270,7 @@ struct mob_arugal_voidwalkerAI : public ScriptedAI
             m_bWPDone = false;
         }
 
-        if (!m_creature->isInCombat())
+        if (!m_creature->IsInCombat())
             return;
 
         if (m_uiDarkOffering < uiDiff)
@@ -290,7 +284,7 @@ struct mob_arugal_voidwalkerAI : public ScriptedAI
             m_uiDarkOffering -= uiDiff;
 
         // Check if we have a current target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
@@ -346,19 +340,19 @@ struct mob_arugal_voidwalkerAI : public ScriptedAI
         Reset();
     }
 
-    uint8 GetPosition()
+    uint8 GetPosition() const
     {
         return m_uiPosition;
     }
 
     void SendWaypoint()
     {
-        std::list<Creature*> lVoidwalkerList;
+        CreatureList lVoidwalkerList;
         GetCreatureListWithEntryInGrid(lVoidwalkerList, m_creature, NPC_VOIDWALKER, 50.0f);
-        for (std::list<Creature*>::iterator itr = lVoidwalkerList.begin(); itr != lVoidwalkerList.end(); ++itr)
+        for (auto& itr : lVoidwalkerList)
         {
-            if ((*itr)->isAlive())
-                if (mob_arugal_voidwalkerAI* pVoidwalkerAI = dynamic_cast<mob_arugal_voidwalkerAI*>((*itr)->AI()))
+            if (itr->IsAlive())
+                if (mob_arugal_voidwalkerAI* pVoidwalkerAI = dynamic_cast<mob_arugal_voidwalkerAI*>(itr->AI()))
                     pVoidwalkerAI->ReceiveWaypoint(m_uiCurrentPoint, m_bReverse);
         }
     }
@@ -370,7 +364,7 @@ struct mob_arugal_voidwalkerAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_mob_arugal_voidwalker(Creature* pCreature)
+UnitAI* GetAI_mob_arugal_voidwalker(Creature* pCreature)
 {
     return new mob_arugal_voidwalkerAI(pCreature);
 }
@@ -535,7 +529,7 @@ struct boss_arugalAI : public ScriptedAI
         }
 
         // Check if we have a current target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (GetManaPercent() < 6.0f && !m_bAttacking)
@@ -575,7 +569,7 @@ struct boss_arugalAI : public ScriptedAI
         {
             if (GetVictimDistance() < 5.0f)
             {
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_THUNDERSHOCK);
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_THUNDERSHOCK);
                 m_uiThundershockTimer = urand(30200, 38500);
             }
         }
@@ -586,7 +580,7 @@ struct boss_arugalAI : public ScriptedAI
         {
             if (!m_bAttacking)
             {
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_VOID_BOLT);
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_VOID_BOLT);
                 m_uiVoidboltTimer = urand(2900, 4800);
             }
         }
@@ -655,19 +649,19 @@ struct boss_arugalAI : public ScriptedAI
     }
 
     // Make the code nice and pleasing to the eye
-    inline float GetManaPercent()
+    inline float GetManaPercent() const
     {
         return (((float)m_creature->GetPower(POWER_MANA) / (float)m_creature->GetMaxPower(POWER_MANA)) * 100);
     }
 
-    inline float GetVictimDistance()
+    inline float GetVictimDistance() const
     {
-        return (m_creature->getVictim() ? m_creature->GetDistance2d(m_creature->getVictim()) : 999.9f);
+        return (m_creature->GetVictim() ? m_creature->GetDistance(m_creature->GetVictim(), false) : 999.9f);
     }
 
     void StopAttacking()
     {
-        if (Unit* victim = m_creature->getVictim())
+        if (Unit* victim = m_creature->GetVictim())
             m_creature->SendMeleeAttackStop(victim);
 
         if (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
@@ -680,18 +674,18 @@ struct boss_arugalAI : public ScriptedAI
 
     void StartAttacking()
     {
-        if (Unit* victim = m_creature->getVictim())
+        if (Unit* victim = m_creature->GetVictim())
             m_creature->SendMeleeAttackStart(victim);
 
         if (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE)
         {
             m_creature->GetMotionMaster()->Clear(false);
-            m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim(), 0.0f, 0.0f);
+            m_creature->GetMotionMaster()->MoveChase(m_creature->GetVictim(), 0.0f, 0.0f);
         }
     }
 };
 
-CreatureAI* GetAI_boss_arugal(Creature* pCreature)
+UnitAI* GetAI_boss_arugal(Creature* pCreature)
 {
     return new boss_arugalAI(pCreature);
 }
@@ -812,7 +806,7 @@ struct npc_arugalAI : public ScriptedAI
     void AttackStart(Unit* /*who*/) override { }
 };
 
-CreatureAI* GetAI_npc_arugal(Creature* pCreature)
+UnitAI* GetAI_npc_arugal(Creature* pCreature)
 {
     return new npc_arugalAI(pCreature);
 }
@@ -844,20 +838,14 @@ struct npc_deathstalker_vincentAI : public ScriptedAI
             m_creature->SetStandState(UNIT_STAND_STATE_DEAD);
     }
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (pDoneBy)
-        {
-            m_creature->SetInCombatWith(pDoneBy);
-            pDoneBy->SetInCombatWith(m_creature);
-        }
-
         if (m_creature->getStandState())
             m_creature->SetStandState(UNIT_STAND_STATE_STAND);
 
-        if (uiDamage >= m_creature->GetHealth())
+        if (damage >= m_creature->GetHealth())
         {
-            m_creature->GetHealth() > 1 ? uiDamage = m_creature->GetHealth() - 1 : uiDamage = 0;
+            damage = std::min(damage, m_creature->GetHealth() - 1);
             m_creature->SetFactionTemporary(FACTION_FRIENDLY, TEMPFACTION_NONE);
             EnterEvadeMode();
             DoScriptText(SAY_VINCENT_DIE, m_creature);
@@ -866,23 +854,47 @@ struct npc_deathstalker_vincentAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (m_creature->isInCombat() && m_creature->getFaction() == FACTION_FRIENDLY)
+        if (m_creature->IsInCombat() && m_creature->getFaction() == FACTION_FRIENDLY)
             EnterEvadeMode();
 
         ScriptedAI::UpdateAI(uiDiff);
     }
 };
 
-CreatureAI* GetAI_npc_deathstalker_vincent(Creature* pCreature)
+UnitAI* GetAI_npc_deathstalker_vincent(Creature* pCreature)
 {
     return new npc_deathstalker_vincentAI(pCreature);
 }
 
+struct ForsakenSkill : public AuraScript
+{
+    void OnPeriodicDummy(Aura* aura) const override
+    {
+        // Possibly need cast one of them (but
+        // 7038 Forsaken Skill: Swords
+        // 7039 Forsaken Skill: Axes
+        // 7040 Forsaken Skill: Daggers
+        // 7041 Forsaken Skill: Maces
+        // 7042 Forsaken Skill: Staves
+        // 7043 Forsaken Skill: Bows
+        // 7044 Forsaken Skill: Guns
+        // 7045 Forsaken Skill: 2H Axes
+        // 7046 Forsaken Skill: 2H Maces
+        // 7047 Forsaken Skill: 2H Swords
+        // 7048 Forsaken Skill: Defense
+        // 7049 Forsaken Skill: Fire
+        // 7050 Forsaken Skill: Frost
+        // 7051 Forsaken Skill: Holy
+        // 7053 Forsaken Skill: Shadow
+        static uint32 forsakenSpells[] = { 7038,7039,7040,7041,7042,7043,7044,7045,7046,7047,7048,7049,7050,7051,7053 };
+        if (urand(0, 99) == 0)
+            aura->GetTarget()->CastSpell(nullptr, forsakenSpells[urand(0, 14)], TRIGGERED_OLD_TRIGGERED);
+    }
+};
+
 void AddSC_shadowfang_keep()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_shadowfang_prisoner";
     pNewScript->pGossipHello =  &GossipHello_npc_shadowfang_prisoner;
     pNewScript->pGossipSelect = &GossipSelect_npc_shadowfang_prisoner;
@@ -908,4 +920,6 @@ void AddSC_shadowfang_keep()
     pNewScript->Name = "npc_deathstalker_vincent";
     pNewScript->GetAI = &GetAI_npc_deathstalker_vincent;
     pNewScript->RegisterSelf();
+
+    RegisterAuraScript<ForsakenSkill>("spell_forsaken_skill");
 }

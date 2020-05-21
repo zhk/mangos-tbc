@@ -27,7 +27,7 @@ go_mausoleum_trigger
 npc_calvin_montague
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 /*######
 ## go_mausoleum_door
@@ -100,14 +100,15 @@ struct npc_calvin_montagueAI : public ScriptedAI
         m_uiPhase = 0;
         m_uiPhaseTimer = 5000;
         SetReactState(REACT_AGGRESSIVE);
+        m_creature->SetImmuneToPlayer(true);
         m_playerGuid.Clear();
     }
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* pDoneBy, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (uiDamage > m_creature->GetHealth() || ((m_creature->GetHealth() - uiDamage) * 100 / m_creature->GetMaxHealth() < 15))
+        if (damage > m_creature->GetHealth() || ((m_creature->GetHealth() - damage) * 100 / m_creature->GetMaxHealth() < 15))
         {
-            uiDamage = 0;
+            damage = std::min(damage, m_creature->GetHealth() - 1);
 
             m_creature->CombatStop(true);
             SetReactState(REACT_PASSIVE);
@@ -152,14 +153,14 @@ struct npc_calvin_montagueAI : public ScriptedAI
             return;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_npc_calvin_montague(Creature* pCreature)
+UnitAI* GetAI_npc_calvin_montague(Creature* pCreature)
 {
     return new npc_calvin_montagueAI(pCreature);
 }
@@ -168,6 +169,7 @@ bool QuestAccept_npc_calvin_montague(Player* pPlayer, Creature* pCreature, const
 {
     if (pQuest->GetQuestId() == QUEST_590)
     {
+        pCreature->SetImmuneToPlayer(false);
         pCreature->SetFactionTemporary(FACTION_HOSTILE, TEMPFACTION_RESTORE_COMBAT_STOP | TEMPFACTION_RESTORE_RESPAWN);
         pCreature->AI()->AttackStart(pPlayer);
     }
@@ -176,9 +178,7 @@ bool QuestAccept_npc_calvin_montague(Player* pPlayer, Creature* pCreature, const
 
 void AddSC_tirisfal_glades()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "go_mausoleum_door";
     pNewScript->pGOUse = &GOUse_go_mausoleum_door;
     pNewScript->RegisterSelf();

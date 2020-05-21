@@ -25,7 +25,7 @@ EndScriptData */
 event_spell_release_jeevee
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "dire_maul.h"
 
 /*######
@@ -90,9 +90,7 @@ bool ProcessEventId_event_spells_warlock_dreadsteed(uint32 uiEventId, Object* pS
 
 void AddSC_dire_maul()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "event_spells_warlock_dreadsteed";
     pNewScript->pProcessEventId = &ProcessEventId_event_spells_warlock_dreadsteed;
     pNewScript->RegisterSelf();

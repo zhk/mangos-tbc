@@ -25,7 +25,7 @@ EndScriptData */
 npc_mist
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/follower_ai.h"
 
 /*####
@@ -51,7 +51,7 @@ struct npc_mistAI : public FollowerAI
     {
         FollowerAI::MoveInLineOfSight(pWho);
 
-        if (!m_creature->getVictim() && !HasFollowState(STATE_FOLLOW_COMPLETE) && pWho->GetEntry() == NPC_ARYNIA)
+        if (!m_creature->GetVictim() && !HasFollowState(STATE_FOLLOW_COMPLETE) && pWho->GetEntry() == NPC_ARYNIA)
         {
             if (m_creature->IsWithinDistInMap(pWho, 10.0f))
             {
@@ -68,7 +68,7 @@ struct npc_mistAI : public FollowerAI
         if (Player* pPlayer = GetLeaderForFollower())
         {
             if (pPlayer->GetQuestStatus(QUEST_MIST) == QUEST_STATUS_INCOMPLETE)
-                pPlayer->GroupEventHappens(QUEST_MIST, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_MIST, m_creature);
         }
 
         // The follow is over (and for later development, run off to the woods before really end)
@@ -78,14 +78,14 @@ struct npc_mistAI : public FollowerAI
     // call not needed here, no known abilities
     /*void UpdateFollowerAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }*/
 };
 
-CreatureAI* GetAI_npc_mist(Creature* pCreature)
+UnitAI* GetAI_npc_mist(Creature* pCreature)
 {
     return new npc_mistAI(pCreature);
 }
@@ -103,9 +103,7 @@ bool QuestAccept_npc_mist(Player* pPlayer, Creature* pCreature, const Quest* pQu
 
 void AddSC_teldrassil()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_mist";
     pNewScript->GetAI = &GetAI_npc_mist;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_mist;

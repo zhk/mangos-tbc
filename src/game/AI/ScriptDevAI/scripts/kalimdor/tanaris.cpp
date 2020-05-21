@@ -29,7 +29,7 @@ npc_stone_watcher_of_norgannon
 npc_tooga
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "AI/ScriptDevAI/base/follower_ai.h"
 
@@ -104,12 +104,12 @@ struct mob_aquementasAI : public ScriptedAI
                 m_uiSwitchFactionTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiFrostShockTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_FROST_SHOCK);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_FROST_SHOCK);
             m_uiFrostShockTimer = 15000;
         }
         else
@@ -127,7 +127,7 @@ struct mob_aquementasAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_mob_aquementas(Creature* pCreature)
+UnitAI* GetAI_mob_aquementas(Creature* pCreature)
 {
     return new mob_aquementasAI(pCreature);
 }
@@ -216,7 +216,7 @@ struct npc_custodian_of_timeAI : public npc_escortAI
     void Reset() override { }
 };
 
-CreatureAI* GetAI_npc_custodian_of_time(Creature* pCreature)
+UnitAI* GetAI_npc_custodian_of_time(Creature* pCreature)
 {
     return new npc_custodian_of_timeAI(pCreature);
 }
@@ -277,7 +277,7 @@ struct npc_oox17tnAI : public npc_escortAI
             case 34:
                 DoScriptText(SAY_OOX_END, m_creature);
                 // Award quest credit
-                pPlayer->GroupEventHappens(QUEST_RESCUE_OOX_17TN, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_RESCUE_OOX_17TN, m_creature);
                 break;
         }
     }
@@ -316,7 +316,7 @@ struct npc_oox17tnAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_oox17tn(Creature* pCreature)
+UnitAI* GetAI_npc_oox17tn(Creature* pCreature)
 {
     return new npc_oox17tnAI(pCreature);
 }
@@ -328,7 +328,7 @@ bool QuestAccept_npc_oox17tn(Player* pPlayer, Creature* pCreature, const Quest* 
         DoScriptText(SAY_OOX_START, pCreature);
         pCreature->SetActiveObjectState(true);
         pCreature->SetStandState(UNIT_STAND_STATE_STAND);
-        pCreature->SetFactionTemporary(FACTION_ESCORT_N_FRIEND_ACTIVE);
+        pCreature->SetFactionTemporary(FACTION_ESCORT_N_FRIEND_ACTIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
         if (npc_oox17tnAI* pEscortAI = dynamic_cast<npc_oox17tnAI*>(pCreature->AI()))
             pEscortAI->Start(false, pPlayer, pQuest);
@@ -438,14 +438,14 @@ struct npc_toogaAI : public FollowerAI
     {
         FollowerAI::MoveInLineOfSight(pWho);
 
-        if (!m_creature->getVictim() && !HasFollowState(STATE_FOLLOW_COMPLETE | STATE_FOLLOW_POSTEVENT) && pWho->GetEntry() == NPC_TORTA)
+        if (!m_creature->GetVictim() && !HasFollowState(STATE_FOLLOW_COMPLETE | STATE_FOLLOW_POSTEVENT) && pWho->GetEntry() == NPC_TORTA)
         {
             if (m_creature->IsWithinDistInMap(pWho, 15.f))
             {
                 if (Player* pPlayer = GetLeaderForFollower())
                 {
                     if (pPlayer->GetQuestStatus(QUEST_TOOGA) == QUEST_STATUS_INCOMPLETE)
-                        pPlayer->GroupEventHappens(QUEST_TOOGA, m_creature);
+                        pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_TOOGA, m_creature);
                 }
 
                 pTorta = pWho;
@@ -467,7 +467,7 @@ struct npc_toogaAI : public FollowerAI
 
     void UpdateFollowerAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         {
             // we are doing the post-event, or...
             if (HasFollowState(STATE_FOLLOW_POSTEVENT))
@@ -476,7 +476,7 @@ struct npc_toogaAI : public FollowerAI
                 {
                     m_uiPostEventTimer = 5000;
 
-                    if (!pTorta || !pTorta->isAlive())
+                    if (!pTorta || !pTorta->IsAlive())
                     {
                         // something happened, so just complete
                         SetFollowComplete();
@@ -535,7 +535,7 @@ struct npc_toogaAI : public FollowerAI
     }
 };
 
-CreatureAI* GetAI_npc_tooga(Creature* pCreature)
+UnitAI* GetAI_npc_tooga(Creature* pCreature)
 {
     return new npc_toogaAI(pCreature);
 }
@@ -553,9 +553,7 @@ bool QuestAccept_npc_tooga(Player* pPlayer, Creature* pCreature, const Quest* pQ
 
 void AddSC_tanaris()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "mob_aquementas";
     pNewScript->GetAI = &GetAI_mob_aquementas;
     pNewScript->RegisterSelf();

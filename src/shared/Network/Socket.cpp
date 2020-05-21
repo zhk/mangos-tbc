@@ -25,6 +25,7 @@
 
 #include <string>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <cstring>
@@ -33,7 +34,7 @@ namespace MaNGOS
 {
     Socket::Socket(boost::asio::io_service& service, std::function<void (Socket*)> closeHandler)
         : m_writeState(WriteState::Idle), m_readState(ReadState::Idle), m_socket(service),
-          m_closeHandler(closeHandler), m_outBufferFlushTimer(service), m_address("0.0.0.0") {}
+          m_closeHandler(std::move(closeHandler)), m_outBufferFlushTimer(service), m_address("0.0.0.0") {}
 
     bool Socket::Open()
     {
@@ -42,9 +43,9 @@ namespace MaNGOS
             const_cast<std::string&>(m_address) = m_socket.remote_endpoint().address().to_string();
             const_cast<std::string&>(m_remoteEndpoint) = boost::lexical_cast<std::string>(m_socket.remote_endpoint());
         }
-        catch (boost::system::error_code& error)
+        catch (boost::system::system_error& error)
         {
-            sLog.outError("Socket::Open() failed to get remote address.  Error: %s", error.message().c_str());
+            sLog.outError("Socket::Open() failed to get remote address.  Error: %s", error.what());
             return false;
         }
 
@@ -59,7 +60,9 @@ namespace MaNGOS
 
     void Socket::Close()
     {
-        assert(!IsClosed());
+        std::lock_guard<std::mutex> guard(m_closeMutex);
+        if (IsClosed())
+            return;
 
         boost::system::error_code ec;
         m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
@@ -211,8 +214,8 @@ namespace MaNGOS
         m_writeState = WriteState::Buffering;
 
         std::shared_ptr<Socket> ptr = shared<Socket>();
-        m_outBufferFlushTimer.expires_from_now(boost::posix_time::milliseconds(BufferTimeout));
-        m_outBufferFlushTimer.async_wait([ptr](const boost::system::error_code & error) { ptr->FlushOut(); });
+        m_outBufferFlushTimer.expires_from_now(boost::posix_time::milliseconds(int(BufferTimeout)));
+        m_outBufferFlushTimer.async_wait([ptr](const boost::system::error_code&) { ptr->FlushOut(); });
     }
 
     void Socket::FlushOut()

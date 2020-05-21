@@ -21,6 +21,7 @@
 #include "Spells/SpellAuraDefines.h"
 #include "Server/DBCEnums.h"
 #include "Entities/ObjectGuid.h"
+#include "Spells/Scripts/SpellScript.h"
 
 /**
  * Used to modify what an Aura does to a player/npc.
@@ -61,6 +62,14 @@ struct Modifier
      * the Aura is removed
      */
     uint32 periodictime;
+    /**
+    * Tells how much amount increased during recent stacks change
+    */
+    int32 m_recentAmount;
+    /**
+    * Set at the beginning so that stack increases dont need to calculate spell values
+    */
+    int32 m_baseAmount;
 };
 
 class Unit;
@@ -100,8 +109,8 @@ class SpellAuraHolder
         DiminishingGroup getDiminishGroup() const { return m_AuraDRGroup; }
 
         uint32 GetStackAmount() const { return m_stackAmount; }
-        void SetStackAmount(uint32 stackAmount);
-        bool ModStackAmount(int32 num); // return true if last charge dropped
+        void SetStackAmount(uint32 stackAmount, Unit* newCaster);
+        bool ModStackAmount(int32 num, Unit* newCaster); // return true if last charge dropped
 
         Aura* GetAuraByEffectIndex(SpellEffectIndex index) const { return m_auras[index]; }
         SpellEntry const* GetTriggeredBy() const { return m_triggeredBy; }
@@ -146,28 +155,16 @@ class SpellAuraHolder
         int32 GetAuraDuration() const { return m_duration; }
         void SetAuraDuration(int32 duration) { m_duration = duration; }
 
+        void SetHeartbeatResist(uint32 chance, int32 originalDuration, uint32 drLevel);
+
         uint8 GetAuraSlot() const { return m_auraSlot; }
         void SetAuraSlot(uint8 slot) { m_auraSlot = slot; }
         uint8 GetAuraLevel() const { return m_auraLevel; }
         void SetAuraLevel(uint8 level) { m_auraLevel = level; }
         uint32 GetAuraCharges() const { return m_procCharges; }
-        void SetAuraCharges(uint32 charges)
-        {
-            if (m_procCharges == charges)
-                return;
-            m_procCharges = charges;
+        void SetAuraCharges(uint32 charges, bool update = true);
 
-            UpdateAuraApplication();
-        }
-        bool DropAuraCharge()                               // return true if last charge dropped
-        {
-            if (m_procCharges == 0)
-                return false;
-
-            --m_procCharges;
-            UpdateAuraApplication();
-            return m_procCharges == 0;
-        }
+        bool DropAuraCharge();                               // return true if last charge dropped
 
         time_t GetAuraApplyTime() const { return m_applyTime; }
 
@@ -193,8 +190,16 @@ class SpellAuraHolder
         void SetAuraLevel(uint32 slot, uint32 level);
 
         void SetCreationDelayFlag();
+
+        // Scripting system
+        AuraScript* GetAuraScript() const { return m_auraScript; }
+        // hooks
+        void OnHolderInit();
+        void OnDispel(Unit* dispeller, uint32 dispellingSpellId, uint32 originalStacks);
     private:
         void UpdateAuraApplication();                       // called at charges or stack changes
+        void ClearExtraAuraInfo(Unit* caster);
+        void UpdateHeartbeatResist(uint32 diff);
 
         SpellEntry const* m_spellProto;
 
@@ -213,6 +218,10 @@ class SpellAuraHolder
         int32 m_duration;                                   // Current time
         int32 m_timeCla;                                    // Timer for power per sec calculation
 
+        float m_heartbeatResistChance;                      // Chance to break this spell due to heartbeat resistance
+        int32 m_heartbeatResistInterval;                    // Heartbeat resistance periodic interval
+        int32 m_heartbeatResistTimer;                       // Timer for heartbeat resistance
+
         AuraRemoveMode m_removeMode: 8;                     // Store info for know remove aura reason
         DiminishingGroup m_AuraDRGroup: 8;                  // Diminishing
         TrackedAuraType m_trackedAuraType: 8;               // store if the caster tracks the aura - can change at spell steal for example
@@ -223,6 +232,9 @@ class SpellAuraHolder
         bool m_isRemovedOnShapeLost: 1;
         bool m_deleted: 1;
         bool m_skipUpdate: 1;
+
+        // Scripting System
+        AuraScript* m_auraScript;
 };
 
 typedef void(Aura::*pAuraHandler)(bool Apply, bool Real);
@@ -242,7 +254,7 @@ typedef void(Aura::*pAuraHandler)(bool Apply, bool Real);
 class Aura
 {
         friend struct ReapplyAffectedPassiveAurasHelper;
-        friend Aura* CreateAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster, Item* castItem);
+        friend Aura* CreateAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster, Item* castItem);
 
     public:
         // aura handlers
@@ -258,113 +270,117 @@ class Aura
         {
             // aura not have immediate effect at add/remove and handled by ID in other code place
         }
-        void HandleBindSight(bool Apply, bool Real);
-        void HandleModPossess(bool Apply, bool Real);
-        void HandlePeriodicDamage(bool Apply, bool Real);
-        void HandleAuraDummy(bool Apply, bool Real);
+        void HandleBindSight(bool apply, bool Real);
+        void HandleModPossess(bool apply, bool Real);
+        void HandlePeriodicDamage(bool apply, bool Real);
+        void HandleAuraDummy(bool apply, bool Real);
         void HandleAuraPeriodicDummy(bool apply, bool Real);
-        void HandleModConfuse(bool Apply, bool Real);
-        void HandleModCharm(bool Apply, bool Real);
-        void HandleModFear(bool Apply, bool Real);
-        void HandlePeriodicHeal(bool Apply, bool Real);
-        void HandleModAttackSpeed(bool Apply, bool Real);
+        void HandleModConfuse(bool apply, bool Real);
+        void HandleModCharm(bool apply, bool Real);
+        void HandleModFear(bool apply, bool Real);
+        void HandlePeriodicHeal(bool apply, bool Real);
+        void HandleModAttackSpeed(bool apply, bool Real);
         void HandleModMeleeRangedSpeedPct(bool apply, bool Real);
         void HandleModCombatSpeedPct(bool apply, bool Real);
-        void HandleModThreat(bool Apply, bool Real);
+        void HandleModThreat(bool apply, bool Real);
         void HandleModTaunt(bool Apply, bool Real);
-        void HandleFeignDeath(bool Apply, bool Real);
-        void HandleAuraModDisarm(bool Apply, bool Real);
-        void HandleAuraModStalked(bool Apply, bool Real);
-        void HandleAuraWaterWalk(bool Apply, bool Real);
-        void HandleAuraFeatherFall(bool Apply, bool Real);
-        void HandleAuraHover(bool Apply, bool Real);
-        void HandleAddModifier(bool Apply, bool Real);
-        void HandleAuraModStun(bool Apply, bool Real);
-        void HandleModDamageDone(bool Apply, bool Real);
-        void HandleAuraUntrackable(bool Apply, bool Real);
-        void HandleAuraEmpathy(bool Apply, bool Real);
+        void HandleFeignDeath(bool apply, bool Real);
+        void HandleAuraModDisarm(bool apply, bool Real);
+        void HandleAuraModStalked(bool apply, bool Real);
+        void HandleAuraWaterWalk(bool apply, bool Real);
+        void HandleAuraFeatherFall(bool apply, bool Real);
+        void HandleAuraHover(bool apply, bool Real);
+        void HandleAddModifier(bool apply, bool Real);
+        void HandleAuraModStun(bool apply, bool Real);
+        void HandleModDamageDone(bool apply, bool Real);
+        void HandleAuraUntrackable(bool apply, bool Real);
+        void HandleAuraEmpathy(bool apply, bool Real);
         void HandleModOffhandDamagePercent(bool apply, bool Real);
-        void HandleAuraModRangedAttackPower(bool Apply, bool Real);
-        void HandleAuraModIncreaseEnergyPercent(bool Apply, bool Real);
-        void HandleAuraModIncreaseHealthPercent(bool Apply, bool Real);
-        void HandleAuraModRegenInterrupt(bool Apply, bool Real);
-        void HandleModMeleeSpeedPct(bool Apply, bool Real);
-        void HandlePeriodicTriggerSpell(bool Apply, bool Real);
+        void HandleAuraModRangedAttackPower(bool apply, bool Real);
+        void HandleAuraModIncreaseEnergyPercent(bool apply, bool Real);
+        void HandleAuraModIncreaseHealthPercent(bool apply, bool Real);
+        void HandleAuraModRegenInterrupt(bool apply, bool Real);
+        void HandleModMeleeSpeedPct(bool apply, bool Real);
+        void HandlePeriodicTriggerSpell(bool apply, bool Real);
         void HandlePeriodicTriggerSpellWithValue(bool apply, bool Real);
-        void HandlePeriodicEnergize(bool Apply, bool Real);
-        void HandleAuraModResistanceExclusive(bool Apply, bool Real);
+        void HandlePeriodicEnergize(bool apply, bool Real);
+        void HandleAuraModResistanceExclusive(bool apply, bool Real);
         void HandleAuraSafeFall(bool Apply, bool Real);
-        void HandleModStealth(bool Apply, bool Real);
-        void HandleInvisibility(bool Apply, bool Real);
-        void HandleInvisibilityDetect(bool Apply, bool Real);
-        void HandleAuraModTotalHealthPercentRegen(bool Apply, bool Real);
-        void HandleAuraModTotalManaPercentRegen(bool Apply, bool Real);
-        void HandleAuraModResistance(bool Apply, bool Real);
-        void HandleAuraModRoot(bool Apply, bool Real);
-        void HandleAuraModSilence(bool Apply, bool Real);
-        void HandleAuraModStat(bool Apply, bool Real);
-        void HandleDetectAmore(bool Apply, bool Real);
+        void HandleModStealth(bool apply, bool Real);
+        void HandleModStealthDetect(bool apply, bool real);
+        void HandleInvisibility(bool apply, bool Real);
+        void HandleInvisibilityDetect(bool apply, bool Real);
+        void HandleAuraModTotalHealthPercentRegen(bool apply, bool Real);
+        void HandleAuraModTotalManaPercentRegen(bool apply, bool Real);
+        void HandleAuraModResistance(bool apply, bool Real);
+        void HandleAuraModRoot(bool apply, bool Real);
+        void HandleAuraModSilence(bool apply, bool Real);
+        void HandleAuraModStat(bool apply, bool Real);
+        void HandleDetectAmore(bool apply, bool Real);
         void HandleAuraModIncreaseSpeed(bool Apply, bool Real);
-        void HandleAuraModIncreaseMountedSpeed(bool Apply, bool Real);
-        void HandleAuraModIncreaseFlightSpeed(bool Apply, bool Real);
-        void HandleAuraModDecreaseSpeed(bool Apply, bool Real);
+        void HandleAuraModIncreaseMountedSpeed(bool apply, bool Real);
+        void HandleAuraModIncreaseFlightSpeed(bool apply, bool Real);
+        void HandleAuraModDecreaseSpeed(bool apply, bool Real);
         void HandleAuraModUseNormalSpeed(bool Apply, bool Real);
-        void HandleAuraModIncreaseHealth(bool Apply, bool Real);
-        void HandleAuraModIncreaseEnergy(bool Apply, bool Real);
-        void HandleAuraModShapeshift(bool Apply, bool Real);
-        void HandleAuraModEffectImmunity(bool Apply, bool Real);
-        void HandleAuraModStateImmunity(bool Apply, bool Real);
-        void HandleAuraModSchoolImmunity(bool Apply, bool Real);
-        void HandleAuraModDmgImmunity(bool Apply, bool Real);
-        void HandleAuraModDispelImmunity(bool Apply, bool Real);
-        void HandleAuraProcTriggerSpell(bool Apply, bool Real);
-        void HandleAuraTrackCreatures(bool Apply, bool Real);
-        void HandleAuraTrackResources(bool Apply, bool Real);
-        void HandleAuraModParryPercent(bool Apply, bool Real);
-        void HandleAuraModDodgePercent(bool Apply, bool Real);
-        void HandleAuraModBlockPercent(bool Apply, bool Real);
-        void HandleAuraModCritPercent(bool Apply, bool Real);
-        void HandlePeriodicLeech(bool Apply, bool Real);
-        void HandleModHitChance(bool Apply, bool Real);
-        void HandleModSpellHitChance(bool Apply, bool Real);
-        void HandleAuraModScale(bool Apply, bool Real);
-        void HandlePeriodicManaLeech(bool Apply, bool Real);
+        void HandleAuraModIncreaseHealth(bool apply, bool Real);
+        void HandleAuraModIncreaseEnergy(bool apply, bool Real);
+        void HandleAuraModShapeshift(bool apply, bool Real);
+        void HandleAuraModEffectImmunity(bool apply, bool Real);
+        void HandleAuraModStateImmunity(bool apply, bool Real);
+        void HandleAuraModSchoolImmunity(bool apply, bool Real);
+        void HandleAuraModDmgImmunity(bool apply, bool Real);
+        void HandleAuraModDispelImmunity(bool apply, bool Real);
+        void HandleAuraProcTriggerSpell(bool apply, bool Real);
+        void HandleAuraTrackCreatures(bool apply, bool Real);
+        void HandleAuraTrackResources(bool apply, bool Real);
+        void HandleAuraModParryPercent(bool apply, bool Real);
+        void HandleAuraModDodgePercent(bool apply, bool Real);
+        void HandleAuraModBlockPercent(bool apply, bool Real);
+        void HandleAuraModCritPercent(bool apply, bool Real);
+        void HandlePeriodicLeech(bool apply, bool Real);
+        void HandleModHitChance(bool apply, bool Real);
+        void HandleModSpellHitChance(bool apply, bool Real);
+        void HandleAuraModScale(bool apply, bool Real);
+        void HandlePeriodicManaLeech(bool apply, bool Real);
         void HandlePeriodicHealthFunnel(bool apply, bool Real);
-        void HandleModCastingSpeed(bool Apply, bool Real);
-        void HandleAuraMounted(bool Apply, bool Real);
-        void HandleWaterBreathing(bool Apply, bool Real);
-        void HandleModBaseResistance(bool Apply, bool Real);
-        void HandleModRegen(bool Apply, bool Real);
-        void HandleModPowerRegen(bool Apply, bool Real);
+        void HandleModCastingSpeed(bool apply, bool Real);
+        void HandleAuraMounted(bool apply, bool Real);
+        void HandleWaterBreathing(bool apply, bool real);
+        void HandleModStealthLevel(bool apply, bool real);
+        void HandleModWaterBreathing(bool apply, bool Real);
+        void HandleModBaseResistance(bool apply, bool Real);
+        void HandleModRegen(bool apply, bool Real);
+        void HandleModPowerRegen(bool apply, bool Real);
         void HandleModPowerRegenPCT(bool Apply, bool Real);
-        void HandleChannelDeathItem(bool Apply, bool Real);
-        void HandlePeriodicDamagePCT(bool Apply, bool Real);
-        void HandleAuraModAttackPower(bool Apply, bool Real);
-        void HandleAuraTransform(bool Apply, bool Real);
-        void HandleModSpellCritChance(bool Apply, bool Real);
+        void HandleModHealingPCT(bool apply, bool real);
+        void HandleChannelDeathItem(bool apply, bool Real);
+        void HandlePeriodicDamagePCT(bool apply, bool Real);
+        void HandleAuraModAttackPower(bool apply, bool Real);
+        void HandleAuraTransform(bool apply, bool Real);
+        void HandleModSpellCritChance(bool apply, bool Real);
         void HandleAuraModIncreaseSwimSpeed(bool Apply, bool Real);
-        void HandleModPowerCostPCT(bool Apply, bool Real);
-        void HandleModPowerCost(bool Apply, bool Real);
-        void HandleFarSight(bool Apply, bool Real);
-        void HandleModPossessPet(bool Apply, bool Real);
-        void HandleModMechanicImmunity(bool Apply, bool Real);
-        void HandleModMechanicImmunityMask(bool Apply, bool Real);
-        void HandleAuraModSkill(bool Apply, bool Real);
-        void HandleModDamagePercentDone(bool Apply, bool Real);
-        void HandleModPercentStat(bool Apply, bool Real);
-        void HandleModResistancePercent(bool Apply, bool Real);
-        void HandleAuraModBaseResistancePCT(bool Apply, bool Real);
-        void HandleAuraTrackStealthed(bool Apply, bool Real);
-        void HandleForceReaction(bool Apply, bool Real);
-        void HandleAuraModRangedHaste(bool Apply, bool Real);
-        void HandleRangedAmmoHaste(bool Apply, bool Real);
+        void HandleModPowerCostPCT(bool apply, bool Real);
+        void HandleModPowerCost(bool apply, bool Real);
+        void HandleFarSight(bool apply, bool Real);
+        void HandleModPossessPet(bool apply, bool Real);
+        void HandleModMechanicImmunity(bool apply, bool Real);
+        void HandleModMechanicImmunityMask(bool apply, bool Real);
+        void HandleAuraModSkill(bool apply, bool Real);
+        void HandleModDamagePercentDone(bool apply, bool Real);
+        void HandleModPercentStat(bool apply, bool Real);
+        void HandleModResistancePercent(bool apply, bool Real);
+        void HandleAuraModBaseResistancePercent(bool apply, bool Real);
+        void HandleAuraTrackStealthed(bool apply, bool Real);
+        void HandleForceReaction(bool apply, bool Real);
+        void HandleAuraModRangedHaste(bool apply, bool Real);
+        void HandleRangedAmmoHaste(bool apply, bool Real);
         void HandleModHealingDone(bool Apply, bool Real);
-        void HandleModTotalPercentStat(bool Apply, bool Real);
-        void HandleAuraModTotalThreat(bool Apply, bool Real);
+        void HandleModTotalPercentStat(bool apply, bool Real);
+        void HandleAuraModTotalThreat(bool apply, bool Real);
         void HandleModUnattackable(bool Apply, bool Real);
-        void HandleAuraModPacify(bool Apply, bool Real);
-        void HandleAuraGhost(bool Apply, bool Real);
-        void HandleAuraAllowFlight(bool Apply, bool Real);
+        void HandleAuraModPacify(bool apply, bool Real);
+        void HandleAuraGhost(bool apply, bool Real);
+        void HandleAuraAllowFlight(bool apply, bool Real);
         void HandleModRating(bool apply, bool Real);
         void HandleModTargetResistance(bool apply, bool Real);
         void HandleAuraModAttackPowerPercent(bool apply, bool Real);
@@ -382,7 +398,7 @@ class Aura
         void HandleAuraModDispelResist(bool apply, bool Real);
         void HandleModSpellDamagePercentFromAttackPower(bool apply, bool Real);
         void HandleModSpellHealingPercentFromAttackPower(bool apply, bool Real);
-        void HandleAuraModPacifyAndSilence(bool Apply, bool Real);
+        void HandleAuraModPacifyAndSilence(bool apply, bool Real);
         void HandleAuraModIncreaseMaxHealth(bool apply, bool Real);
         void HandleAuraModExpertise(bool apply, bool Real);
         void HandleForceMoveForward(bool apply, bool Real);
@@ -395,10 +411,12 @@ class Aura
         void HandleAuraMirrorImage(bool apply, bool Real);
         void HandleFactionOverride(bool apply, bool Real);
         void HandlePrayerOfMending(bool apply, bool Real);
+        void HandleAuraDetaunt(bool Apply, bool Real);
+        void HandleOverrideClassScript(bool apply, bool real);
 
         virtual ~Aura();
 
-        void SetModifier(AuraType t, int32 a, uint32 pt, int32 miscValue);
+        void SetModifier(AuraType type, int32 amount, uint32 periodicTime, int32 miscValue);
         Modifier*       GetModifier()       { return &m_modifier; }
         Modifier const* GetModifier() const { return &m_modifier; }
         int32 GetMiscValue() const { return m_spellAuraHolder->GetSpellProto()->EffectMiscValue[m_effIndex]; }
@@ -427,6 +445,8 @@ class Aura
         }
         uint32 GetStackAmount() const { return GetHolder()->GetStackAmount(); }
 
+        bool DropAuraCharge();                               // return true if last charge dropped
+
         void SetLoadedState(int32 damage, uint32 periodicTime)
         {
             m_modifier.m_amount = damage;
@@ -446,6 +466,7 @@ class Aura
         void UpdateAura(uint32 diff) { Update(diff); }
 
         void SetRemoveMode(AuraRemoveMode mode) { m_removeMode = mode; }
+        AuraRemoveMode GetRemoveMode() { return m_removeMode; }
 
         virtual Unit* GetTriggerTarget() const { return m_spellAuraHolder->GetTarget(); }
 
@@ -465,8 +486,29 @@ class Aura
         bool IsLastAuraOnHolder();
 
         bool HasMechanic(uint32 mechanic) const;
+
+        SpellModifier* GetSpellModifier() { return m_spellmod; }
+
+        void UseMagnet() { m_magnetUsed = true; }
+        bool IsMagnetUsed() const { return m_magnetUsed; }
+
+        // Scripting system
+        AuraScript* GetAuraScript() const { return GetHolder()->GetAuraScript(); }
+        // hooks
+        int32 OnAuraValueCalculate(Unit* caster, int32 currentValue);
+        void OnDamageCalculate(int32& advertisedBenefit, float& totalMod);
+        void OnApply(bool apply);
+        bool OnCheckProc();
+        SpellAuraProcResult OnProc(ProcExecutionData& data);
+        void OnAbsorb(int32& currentAbsorb, uint32& reflectedSpellId, int32& reflectDamage, bool& preventedDeath);
+        void OnManaAbsorb(int32& currentAbsorb);
+        void OnAuraDeathPrevention(int32& remainingDamage);
+        void OnPeriodicTrigger(PeriodicTriggerData& data);
+        void OnPeriodicDummy();
+        void OnPeriodicTickEnd();
+        void OnPeriodicCalculateAmount(uint32& amount);
     protected:
-        Aura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr);
+        Aura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr);
 
         // must be called only from Aura::UpdateAura
         virtual void Update(uint32 diff);
@@ -476,6 +518,9 @@ class Aura
         void PeriodicDummyTick();
 
         void ReapplyAffectedPassiveAuras();
+
+        void PickTargetsForSpellTrigger(Unit *& triggerCaster, Unit *& triggerTarget, WorldObject *& triggerTargetObject, SpellEntry const* spellInfo);
+        void CastTriggeredSpell(PeriodicTriggerData& data);
 
         Modifier m_modifier;
         SpellModifier* m_spellmod;
@@ -494,8 +539,12 @@ class Aura
         bool m_isPeriodic: 1;
         bool m_isAreaAura: 1;
         bool m_isPersistent: 1;
+        bool m_magnetUsed: 1;
 
         SpellAuraHolder* const m_spellAuraHolder;
+
+        // Scripting system
+        uint64 m_scriptValue; // persistent value for spell script state
     private:
         void ReapplyAffectedPassiveAuras(Unit* target, bool owner_mode);
 };
@@ -503,7 +552,7 @@ class Aura
 class AreaAura : public Aura
 {
     public:
-        AreaAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr, uint32 originalRankSpellId = 0);
+        AreaAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr, uint32 originalRankSpellId = 0);
         ~AreaAura();
     protected:
         void Update(uint32 diff) override;
@@ -516,7 +565,7 @@ class AreaAura : public Aura
 class PersistentAreaAura : public Aura
 {
     public:
-        PersistentAreaAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr);
+        PersistentAreaAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr);
         ~PersistentAreaAura();
     protected:
         void Update(uint32 diff) override;
@@ -524,17 +573,28 @@ class PersistentAreaAura : public Aura
 
 class SingleEnemyTargetAura : public Aura
 {
-        friend Aura* CreateAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster, Item* castItem);
+        friend Aura* CreateAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster, Item* castItem);
 
     public:
         ~SingleEnemyTargetAura();
         Unit* GetTriggerTarget() const override;
 
     protected:
-        SingleEnemyTargetAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster  = nullptr, Item* castItem = nullptr);
+        SingleEnemyTargetAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster  = nullptr, Item* castItem = nullptr);
         ObjectGuid m_castersTargetGuid;
 };
 
-Aura* CreateAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr);
+// Used for GO Area Auras
+class GameObjectAura : public Aura
+{
+    public:
+        GameObjectAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, GameObject* caster);
+        ~GameObjectAura();
+
+    protected:
+        void Update(uint32 diff) override;
+};
+
+Aura* CreateAura(SpellEntry const* spellproto, SpellEffectIndex eff, int32 const* currentDamage, int32 const* currentBasePoints, SpellAuraHolder* holder, Unit* target, Unit* caster = nullptr, Item* castItem = nullptr);
 SpellAuraHolder* CreateSpellAuraHolder(SpellEntry const* spellproto, Unit* target, WorldObject* caster, Item* castItem = nullptr, SpellEntry const* triggeredBy = nullptr);
 #endif

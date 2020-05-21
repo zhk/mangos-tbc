@@ -25,7 +25,7 @@ EndScriptData */
 npc_belnistrasz
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*###
@@ -53,11 +53,15 @@ enum
     NPC_PLAGUEMAW_THE_ROTTING       = 7356,
 
     GO_BELNISTRASZ_BRAZIER          = 152097,
+    GO_IDOL_OVEN_FIRE               = 151951,
+    GO_IDOL_CUP_FIRE                = 151952,
+    GO_IDOL_MOUTH_FIRE              = 151973,
 
     SPELL_ARCANE_INTELLECT          = 13326,                // use this somewhere (he has it as default)
     SPELL_FIREBALL                  = 9053,
     SPELL_FROST_NOVA                = 11831,
     SPELL_IDOL_SHUTDOWN             = 12774,
+    SPELL_IDOL_ROOM_SHAKE           = 12816,
 
     // summon spells only exist in 1.x
     // SPELL_SUMMON_1                  = 12694,             // NPC_WITHERED_BATTLE_BOAR
@@ -71,6 +75,8 @@ static float m_fSpawnerCoord[3][4] =
     {2569.42f, 956.380f, 52.2732f, 5.42797f},
     {2570.62f, 942.393f, 53.7433f, 0.71558f}
 };
+
+static const uint32 aGOList[] = {GO_IDOL_OVEN_FIRE, GO_IDOL_CUP_FIRE, GO_IDOL_MOUTH_FIRE};
 
 struct npc_belnistraszAI : public npc_escortAI
 {
@@ -123,7 +129,7 @@ struct npc_belnistraszAI : public npc_escortAI
         {
             uint32 uiEntry = 0;
 
-            // ref TARGET_RANDOM_CIRCUMFERENCE_POINT
+            // ref TARGET_LOCATION_CASTER_RANDOM_CIRCUMFERENCE
             float angle = 2.0f * M_PI_F * rand_norm_f();
             float fX, fZ, fY;
             pSummoner->GetClosePoint(fX, fZ, fY, 0.0f, 2.0f, angle);
@@ -218,11 +224,11 @@ struct npc_belnistraszAI : public npc_escortAI
                     {
                         if (Player* pPlayer = GetPlayerForEscort())
                         {
-                            pPlayer->GroupEventHappens(QUEST_EXTINGUISHING_THE_IDOL, m_creature);
+                            pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_EXTINGUISHING_THE_IDOL, m_creature);
 
                             if (GameObject* pGo = GetClosestGameObjectWithEntry(m_creature, GO_BELNISTRASZ_BRAZIER, 10.0f))
                             {
-                                if (!pGo->isSpawned())
+                                if (!pGo->IsSpawned())
                                 {
                                     pGo->SetRespawnTime(HOUR * IN_MILLISECONDS);
                                     pGo->Refresh();
@@ -232,6 +238,16 @@ struct npc_belnistraszAI : public npc_escortAI
 
                         m_creature->RemoveAurasDueToSpell(SPELL_IDOL_SHUTDOWN);
                         SetEscortPaused(false);
+
+                        // Desactivate the fires on the idol now it is extinguished
+                        DoCastSpellIfCan(m_creature, SPELL_IDOL_ROOM_SHAKE);
+                        GameObjectList lOvenFires;
+                        for (auto&& gameObjectEntry : aGOList)
+                            GetGameObjectListWithEntryInGrid(lOvenFires, m_creature, gameObjectEntry, 40.0f);
+
+                        for (auto&& gameObject : lOvenFires)
+                            gameObject->SetLootState(GO_JUST_DEACTIVATED);
+
                         break;
                     }
                 }
@@ -244,12 +260,12 @@ struct npc_belnistraszAI : public npc_escortAI
             return;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiFireballTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_FIREBALL);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_FIREBALL);
             m_uiFireballTimer  = urand(2000, 3000);
         }
         else
@@ -257,7 +273,7 @@ struct npc_belnistraszAI : public npc_escortAI
 
         if (m_uiFrostNovaTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_FROST_NOVA);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_FROST_NOVA);
             m_uiFrostNovaTimer = urand(10000, 15000);
         }
         else
@@ -267,7 +283,7 @@ struct npc_belnistraszAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_belnistrasz(Creature* pCreature)
+UnitAI* GetAI_npc_belnistrasz(Creature* pCreature)
 {
     return new npc_belnistraszAI(pCreature);
 }
@@ -289,9 +305,7 @@ bool QuestAccept_npc_belnistrasz(Player* pPlayer, Creature* pCreature, const Que
 
 void AddSC_razorfen_downs()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_belnistrasz";
     pNewScript->GetAI = &GetAI_npc_belnistrasz;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_belnistrasz;

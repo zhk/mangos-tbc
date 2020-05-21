@@ -28,7 +28,7 @@ npc_torek
 npc_feero_ironhand
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*####
@@ -140,7 +140,7 @@ struct npc_muglashAI : public npc_escortAI
                 DoScriptText(SAY_MUG_GRATITUDE, m_creature);
 
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_VORSHA, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_VORSHA, m_creature);
                 break;
             case 26:
                 DoScriptText(SAY_MUG_PATROL, m_creature);
@@ -182,7 +182,7 @@ struct npc_muglashAI : public npc_escortAI
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         {
             if (HasEscortState(STATE_ESCORT_PAUSED) && m_bIsBrazierExtinguished)
             {
@@ -210,7 +210,7 @@ bool QuestAccept_npc_muglash(Player* pPlayer, Creature* pCreature, const Quest* 
         if (npc_muglashAI* pEscortAI = dynamic_cast<npc_muglashAI*>(pCreature->AI()))
         {
             DoScriptText(SAY_MUG_START1, pCreature);
-            pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
             pEscortAI->Start(false, pPlayer, pQuest);
         }
@@ -219,7 +219,7 @@ bool QuestAccept_npc_muglash(Player* pPlayer, Creature* pCreature, const Quest* 
     return true;
 }
 
-CreatureAI* GetAI_npc_muglash(Creature* pCreature)
+UnitAI* GetAI_npc_muglash(Creature* pCreature)
 {
     return new npc_muglashAI(pCreature);
 }
@@ -247,58 +247,97 @@ bool GOUse_go_naga_brazier(Player* /*pPlayer*/, GameObject* pGo)
 enum
 {
     QUEST_FREEDOM_TO_RUUL   = 6482,
-    NPC_T_URSA              = 3921,
-    NPC_T_TOTEMIC           = 3922,
-    NPC_T_PATHFINDER        = 3926
+    NPC_T_AVENGER           = 3925,
+    NPC_T_SHAMAN            = 3924,
+    NPC_T_PATHFINDER        = 3926,
+    SPELL_RUUL_SHAPECHANGE  = 20514,
+    SAY_RUUL_COMPLETE       = -1010022
 };
+
+static uint32 m_ruulAmbushers[3] = { NPC_T_AVENGER, NPC_T_SHAMAN, NPC_T_PATHFINDER};
+
+static float m_ruulAmbushCoords[2][3] =
+        {
+                {3425.33f, -595.93f, 178.31f},    // First ambush
+                {3245.34f, -506.66f, 150.05f},    // Second ambush
+        };
 
 struct npc_ruul_snowhoofAI : public npc_escortAI
 {
-    npc_ruul_snowhoofAI(Creature* pCreature) : npc_escortAI(pCreature) { Reset(); }
+    npc_ruul_snowhoofAI(Creature* creature) : npc_escortAI(creature) { Reset(); }
 
-    void Reset() override {}
-
-    void WaypointReached(uint32 uiPointId) override
+    void Reset() override
     {
-        switch (uiPointId)
+        DoCastSpellIfCan(m_creature, SPELL_RUUL_SHAPECHANGE, TRIGGERED_OLD_TRIGGERED);
+    }
+
+    void DoSpawnAmbush(uint8 index)
+    {
+        for (auto ambusherEntry : m_ruulAmbushers)
         {
-            case 13:
-                m_creature->SummonCreature(NPC_T_TOTEMIC, 3449.218018f, -587.825073f, 174.978867f, 4.714445f, TEMPSPAWN_DEAD_DESPAWN, 60000);
-                m_creature->SummonCreature(NPC_T_URSA, 3446.384521f, -587.830872f, 175.186279f, 4.714445f, TEMPSPAWN_DEAD_DESPAWN, 60000);
-                m_creature->SummonCreature(NPC_T_PATHFINDER, 3444.218994f, -587.835327f, 175.380600f, 4.714445f, TEMPSPAWN_DEAD_DESPAWN, 60000);
-                break;
-            case 19:
-                m_creature->SummonCreature(NPC_T_TOTEMIC, 3508.344482f, -492.024261f, 186.929031f, 4.145029f, TEMPSPAWN_DEAD_DESPAWN, 60000);
-                m_creature->SummonCreature(NPC_T_URSA, 3506.265625f, -490.531006f, 186.740128f, 4.239277f, TEMPSPAWN_DEAD_DESPAWN, 60000);
-                m_creature->SummonCreature(NPC_T_PATHFINDER, 3503.682373f, -489.393799f, 186.629684f, 4.349232f, TEMPSPAWN_DEAD_DESPAWN, 60000);
-                break;
-            case 21:
-                if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_FREEDOM_TO_RUUL, m_creature);
-                break;
+            float fx, fy, fz;
+            m_creature->GetRandomPoint(m_ruulAmbushCoords[index][0], m_ruulAmbushCoords[index][1], m_ruulAmbushCoords[index][2], 7.0f, fx, fy, fz);
+            if (Creature* ambusher = m_creature->SummonCreature(ambusherEntry, fx, fy, fz, 0, TEMPSPAWN_DEAD_DESPAWN, 60 * IN_MILLISECONDS))
+            {
+                ambusher->SetWalk(false);
+                ambusher->GetMotionMaster()->MovePoint(0, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ());
+            }
         }
     }
 
-    void JustSummoned(Creature* summoned) override
+    void WaypointReached(uint32 pointId) override
     {
-        summoned->AI()->AttackStart(m_creature);
+        switch (pointId)
+        {
+            case 13:
+                DoSpawnAmbush(0);
+                break;
+            case 30:
+                DoSpawnAmbush(1);
+                break;
+            case 31:
+                m_creature->SetImmuneToNPC(true);
+                m_creature->RemoveAurasDueToSpell(SPELL_RUUL_SHAPECHANGE);
+                if (Player* player = GetPlayerForEscort())
+                {
+                    m_creature->SetFacingToObject(player);
+                    player->RewardPlayerAndGroupAtEventExplored(QUEST_FREEDOM_TO_RUUL, m_creature);
+                }
+                break;
+            case 32:
+                if (Player* player = GetPlayerForEscort())
+                {
+                    DoScriptText(SAY_RUUL_COMPLETE, m_creature, player);
+                    m_creature->SetFacingToObject(player);
+                }
+                m_creature->HandleEmote(EMOTE_ONESHOT_BOW);
+                m_creature->SetWalk(false);
+                break;
+            case 33:
+                DoCastSpellIfCan(m_creature, SPELL_RUUL_SHAPECHANGE);
+                break;
+            case 35:
+                m_creature->SetImmuneToNPC(false);
+                m_creature->SetWalk(true);
+                m_creature->ForcedDespawn();
+        }
     }
 };
 
-bool QuestAccept_npc_ruul_snowhoof(Player* pPlayer, Creature* pCreature, const Quest* pQuest)
+bool QuestAccept_npc_ruul_snowhoof(Player* player, Creature* creature, const Quest* quest)
 {
-    if (pQuest->GetQuestId() == QUEST_FREEDOM_TO_RUUL)
+    if (quest->GetQuestId() == QUEST_FREEDOM_TO_RUUL)
     {
-        pCreature->SetFactionTemporary(FACTION_ESCORT_N_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
-        pCreature->SetStandState(UNIT_STAND_STATE_STAND);
+        creature->SetFactionTemporary(FACTION_ESCORT_N_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+        creature->SetStandState(UNIT_STAND_STATE_STAND);
 
-        if (npc_ruul_snowhoofAI* pEscortAI = dynamic_cast<npc_ruul_snowhoofAI*>(pCreature->AI()))
-            pEscortAI->Start(false, pPlayer, pQuest);
+        if (npc_ruul_snowhoofAI* escortAI = dynamic_cast<npc_ruul_snowhoofAI*>(creature->AI()))
+            escortAI->Start(false, player, quest);
     }
     return true;
 }
 
-CreatureAI* GetAI_npc_ruul_snowhoofAI(Creature* pCreature)
+UnitAI* GetAI_npc_ruul_snowhoofAI(Creature* pCreature)
 {
     return new npc_ruul_snowhoofAI(pCreature);
 }
@@ -362,7 +401,7 @@ struct npc_torekAI : public npc_escortAI
                 break;
             case 20:
                 DoScriptText(SAY_WIN, m_creature, pPlayer);
-                pPlayer->GroupEventHappens(QUEST_TOREK_ASSULT, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_TOREK_ASSULT, m_creature);
                 break;
             case 21:
                 DoScriptText(SAY_END, m_creature, pPlayer);
@@ -377,12 +416,12 @@ struct npc_torekAI : public npc_escortAI
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiRend_Timer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_REND);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_REND);
             m_uiRend_Timer = 20000;
         }
         else
@@ -414,7 +453,7 @@ bool QuestAccept_npc_torek(Player* pPlayer, Creature* pCreature, const Quest* pQ
     return true;
 }
 
-CreatureAI* GetAI_npc_torek(Creature* pCreature)
+UnitAI* GetAI_npc_torek(Creature* pCreature)
 {
     return new npc_torekAI(pCreature);
 }
@@ -511,7 +550,7 @@ struct npc_feero_ironhandAI : public npc_escortAI
             case 30:
                 // Complete the quest
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_SUPPLIES_TO_AUBERDINE, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_SUPPLIES_TO_AUBERDINE, m_creature);
                 break;
         }
     }
@@ -577,7 +616,7 @@ struct npc_feero_ironhandAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_feero_ironhand(Creature* pCreature)
+UnitAI* GetAI_npc_feero_ironhand(Creature* pCreature)
 {
     return new npc_feero_ironhandAI(pCreature);
 }
@@ -587,7 +626,7 @@ bool QuestAccept_npc_feero_ironhand(Player* pPlayer, Creature* pCreature, const 
     if (pQuest->GetQuestId() == QUEST_SUPPLIES_TO_AUBERDINE)
     {
         DoScriptText(SAY_QUEST_START, pCreature, pPlayer);
-        pCreature->SetFactionTemporary(FACTION_ESCORT_A_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+        pCreature->SetFactionTemporary(FACTION_ESCORT_A_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
         if (npc_feero_ironhandAI* pEscortAI = dynamic_cast<npc_feero_ironhandAI*>(pCreature->AI()))
             pEscortAI->Start(true, pPlayer, pQuest, true);
@@ -598,9 +637,7 @@ bool QuestAccept_npc_feero_ironhand(Player* pPlayer, Creature* pCreature, const 
 
 void AddSC_ashenvale()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_muglash";
     pNewScript->GetAI = &GetAI_npc_muglash;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_muglash;

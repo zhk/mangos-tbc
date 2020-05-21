@@ -21,7 +21,7 @@ SDComment: Item, Areatrigger and other small code examples
 SDCategory: Script Examples
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -49,9 +49,7 @@ bool GOUse_example_go_teleporter(Player* pPlayer, GameObject* /*pGo*/)
 
 void AddSC_example_misc()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "at_example";
     pNewScript->pAreaTrigger = &AreaTrigger_at_example;
     pNewScript->RegisterSelf(false);

@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Hellfire Ramparts
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "hellfire_ramparts.h"
 
 instance_ramparts::instance_ramparts(Map* pMap) : ScriptedInstance(pMap),
@@ -128,7 +128,7 @@ void instance_ramparts::DoFailVazruden()
     // Respawn or Reset Vazruden the herald
     if (Creature* pVazruden = GetSingleCreatureFromStorage(NPC_VAZRUDEN_HERALD))
     {
-        if (!pVazruden->isAlive())
+        if (!pVazruden->IsAlive())
             pVazruden->Respawn();
         else
         {
@@ -149,9 +149,7 @@ InstanceData* GetInstanceData_instance_ramparts(Map* pMap)
 
 void AddSC_instance_ramparts()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_ramparts";
     pNewScript->GetInstanceData = &GetInstanceData_instance_ramparts;
     pNewScript->RegisterSelf();

@@ -21,7 +21,7 @@ SDComment: Sinister Reflection needs AI support.
 SDCategory: Sunwell Plateau
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "sunwell_plateau.h"
 #include "Entities/TemporarySpawn.h"
 
@@ -119,18 +119,20 @@ enum
     EVENT_DRAGON_ORB            = 9,
 
     // outro
-    SPELL_TELEPORT_VISUAL       = 12980,
+    SPELL_TELEPORT_VISUAL       = 35517,
     SPELL_KALEC_TELEPORT        = 46473,            // teleports and transforms Kalec in human form
     SPELL_ARCANE_PORTAL         = 42047,
     SPELL_CALL_ENTROPIUS        = 46818,
     SPELL_ENTROPIUS_BODY        = 46819,
     SPELL_BLAZE_TO_LIGHT        = 46821,
     SPELL_SUNWELL_IGNITION      = 46822,
+    SPELL_PORTAL_FROM_SHATTRATH = 46801,            // Riftwalker after reached point 1, summon NPC_RIFTWALKER and cast on him this spell.
 
     NPC_INERT_PORTAL            = 26254,
     NPC_CORE_ENTROPIUS          = 26262,
     NPC_SOLDIER                 = 26259,            // summoned in 2 waves before Velen. Should move into 2 circle formations
     NPC_RIFTWALKER              = 26289,
+    NPC_SHATTRATH_PORTAL        = 26251,
 
     POINT_SUMMON_SOLDIERS       = 1,
     POINT_MOVE_LIADRIN          = 2,
@@ -168,7 +170,8 @@ static const DialogueEntry aPhaseDialogue[] =
 static const DialogueEntry aOutroDialogue[] =
 {
     {NPC_KALECGOS,          0,              15000},
-    {SAY_KALECGOS_GOODBYE,  NPC_KALECGOS,   40000},
+    {SAY_KALECGOS_GOODBYE,  NPC_KALECGOS,   8000},
+    {NPC_RIFTWALKER,        0,              11000},
     {NPC_INERT_PORTAL,      0,              10000},
     {POINT_SUMMON_SOLDIERS, 0,              18000},
     {NPC_VELEN,             0,              1000},
@@ -223,6 +226,8 @@ struct npc_kiljaeden_controllerAI : public Scripted_NoMovementAI, private Dialog
 
     ObjectGuid m_EntropiusGuid;
     ObjectGuid m_PortalGuid;
+    ObjectGuid m_firstRiftwalkerGuid;
+    ObjectGuid m_secondRiftwalkerGuid;
 
     void Reset() override
     {
@@ -246,6 +251,22 @@ struct npc_kiljaeden_controllerAI : public Scripted_NoMovementAI, private Dialog
                     pKalec->SetLevitate(false);
                 }
                 m_creature->SummonCreature(NPC_CORE_ENTROPIUS, aOutroLocations[5].m_fX, aOutroLocations[5].m_fY, aOutroLocations[5].m_fZ, aOutroLocations[5].m_fO, TEMPSPAWN_CORPSE_DESPAWN, 0);
+                break;
+            case NPC_RIFTWALKER:
+                if (Creature* pRiftwalker = m_creature->SummonCreature(NPC_RIFTWALKER, 1688.42f, 641.82f, 27.60f, 0.67f, TEMPSPAWN_DEAD_DESPAWN, 0))
+                {
+                    pRiftwalker->SetWalk(false);
+                    pRiftwalker->CastSpell(pRiftwalker, SPELL_TELEPORT_VISUAL, TRIGGERED_OLD_TRIGGERED);
+                    pRiftwalker->GetMotionMaster()->MovePoint(1, 1727.08f, 656.82f, 28.37f);
+                    m_firstRiftwalkerGuid = pRiftwalker->GetObjectGuid();
+                }
+                if (Creature* pRiftwalker = m_creature->SummonCreature(NPC_RIFTWALKER, 1712.58f, 616.29f, 27.78f, 0.76f, TEMPSPAWN_DEAD_DESPAWN, 0))
+                {
+                    pRiftwalker->SetWalk(false);
+                    pRiftwalker->CastSpell(pRiftwalker, SPELL_TELEPORT_VISUAL, TRIGGERED_OLD_TRIGGERED);
+                    pRiftwalker->GetMotionMaster()->MovePoint(1, 1738.84f, 627.32f, 28.26f);
+                    m_secondRiftwalkerGuid = pRiftwalker->GetObjectGuid();
+                }
                 break;
             case NPC_INERT_PORTAL:
                 // ToDo: summon soldiers to the right
@@ -296,6 +317,7 @@ struct npc_kiljaeden_controllerAI : public Scripted_NoMovementAI, private Dialog
         switch (pSummoned->GetEntry())
         {
             case NPC_VELEN:
+                pSummoned->CastSpell(pSummoned, SPELL_TELEPORT_VISUAL, TRIGGERED_OLD_TRIGGERED);
                 pSummoned->GetMotionMaster()->MovePoint(0, aOutroLocations[3].m_fX, aOutroLocations[3].m_fY, aOutroLocations[3].m_fZ);
             // no break here
             case NPC_LIADRIN:
@@ -466,13 +488,13 @@ struct boss_kiljaedenAI : public Scripted_NoMovementAI, private DialogueHelper
             pSummoned->CastSpell(pSummoned, SPELL_SHADOW_BOLT_AURA, TRIGGERED_OLD_TRIGGERED);
 
             // Start the movement of the shadow orb - calculate new position based on the angle between the boss and orb
-            float fX, fY, fAng;
-            fAng = m_creature->GetAngle(pSummoned) + M_PI_F / 8;
+            float fX, fY;
+            float fAng = m_creature->GetAngle(pSummoned) + M_PI_F / 8;
             // Normalize angle
             if (fAng > 2 * M_PI_F)
                 fAng = fAng - 2 * M_PI_F;
 
-            m_creature->GetNearPoint2D(fX, fY, 25.0f, fAng);
+            m_creature->GetNearPoint2d(fX, fY, 25.0f, fAng);
 
             // Move to new position
             pSummoned->GetMotionMaster()->Clear();
@@ -586,7 +608,7 @@ struct boss_kiljaedenAI : public Scripted_NoMovementAI, private DialogueHelper
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DialogueUpdate(uiDiff);
@@ -654,7 +676,7 @@ struct boss_kiljaedenAI : public Scripted_NoMovementAI, private DialogueHelper
 
                 if (m_uiLegionLightingTimer < uiDiff)
                 {
-                    if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+                    if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
                     {
                         if (DoCastSpellIfCan(pTarget, SPELL_LEGION_LIGHTING) == CAST_OK)
                             m_uiLegionLightingTimer = urand(10000, 15000);
@@ -673,7 +695,7 @@ struct boss_kiljaedenAI : public Scripted_NoMovementAI, private DialogueHelper
 
                 if (m_uiSoulFlyTimer < uiDiff)
                 {
-                    if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SOUL_FLY) == CAST_OK)
+                    if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SOUL_FLY) == CAST_OK)
                         m_uiSoulFlyTimer = urand(3000, 10000);
                 }
                 else
@@ -685,9 +707,9 @@ struct boss_kiljaedenAI : public Scripted_NoMovementAI, private DialogueHelper
                     if (m_uiShieldOrbTimer < uiDiff)
                     {
                         // Get some random coords for the Orb
-                        float fX, fY, fZ;
-                        m_creature->GetNearPoint2D(fX, fY, 25.0f, frand(0, 2 * M_PI_F));
-                        fZ = frand(35.0f, 45.0f);
+                        float fX, fY;
+                        m_creature->GetNearPoint2d(fX, fY, 25.0f, frand(0, 2 * M_PI_F));
+                        float fZ = frand(35.0f, 45.0f);
 
                         m_creature->SummonCreature(NPC_SHIELD_ORB, fX, fY, fZ, 0, TEMPSPAWN_CORPSE_DESPAWN, 0);
                         ++m_uiShieldOrbCount;
@@ -754,13 +776,13 @@ struct npc_shield_orbAI : public ScriptedAI
         if (Creature* pSummoner = m_pInstance->GetSingleCreatureFromStorage(NPC_KILJAEDEN))
         {
             // Calculate new position based on the angle between the boss and self
-            float fX, fY, fAng;
-            fAng = pSummoner->GetAngle(m_creature) + M_PI_F / 8;
+            float fX, fY;
+            float fAng = pSummoner->GetAngle(m_creature) + M_PI_F / 8;
             // Normalize angle
             if (fAng > 2 * M_PI_F)
                 fAng = fAng - 2 * M_PI_F;
 
-            pSummoner->GetNearPoint2D(fX, fY, 25.0f, fAng);
+            pSummoner->GetNearPoint2d(fX, fY, 25.0f, fAng);
 
             // Move to new position
             m_creature->GetMotionMaster()->Clear();
@@ -829,31 +851,29 @@ struct npc_power_blue_flightAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_kiljaeden(Creature* pCreature)
+UnitAI* GetAI_boss_kiljaeden(Creature* pCreature)
 {
     return new boss_kiljaedenAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_kiljaeden_controller(Creature* pCreature)
+UnitAI* GetAI_npc_kiljaeden_controller(Creature* pCreature)
 {
     return new npc_kiljaeden_controllerAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_shield_orb(Creature* pCreature)
+UnitAI* GetAI_npc_shield_orb(Creature* pCreature)
 {
     return new npc_shield_orbAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_power_blue_flight(Creature* pCreature)
+UnitAI* GetAI_npc_power_blue_flight(Creature* pCreature)
 {
     return new npc_power_blue_flightAI(pCreature);
 }
 
 void AddSC_boss_kiljaeden()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_kiljaeden";
     pNewScript->GetAI = &GetAI_boss_kiljaeden;
     pNewScript->pEffectAuraDummy = &EffectAuraDummy_spell_aura_dummy_darkness_of_souls;

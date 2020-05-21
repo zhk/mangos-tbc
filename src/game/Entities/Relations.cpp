@@ -22,6 +22,7 @@
 #include "Entities/Corpse.h"
 #include "Entities/GameObject.h"
 #include "Entities/DynamicObject.h"
+#include "Globals/ObjectMgr.h"
 #include "Tools/Formulas.h"
 
 /////////////////////////////////////////////////
@@ -60,6 +61,43 @@
 ##########################*/
 
 /////////////////////////////////////////////////
+/// Controlling player: get which player is the "master" of the unit gameplay-wise
+///
+/// @note Relations API Tier 1
+///
+/// Client-side counterpart: <tt>CGUnit_C::GetControllingPlayer(CGUnit_C *this)</tt>
+/// Contains optional logic for getting original permanent "master" by ignoring charms (also known as "UI PoV"), datamined from other functions.
+/////////////////////////////////////////////////
+Player const* Unit::GetControllingPlayer(bool ignoreCharms/* = false*/) const
+{
+    // Mode selector: normal or permanent (UI point of view, ignore charms)
+    ObjectGuid const& (Unit::* getter) () const = (ignoreCharms ? &Unit::GetOwnerGuid : &Unit::GetMasterGuid);
+
+    // Original logic begins
+
+    // TBC+: up to master's master
+    if (ObjectGuid const& masterGuid = (this->*getter)())
+    {
+        if (Unit const* master = ObjectAccessor::GetUnit(*this, masterGuid))
+        {
+            if (master->GetTypeId() == TYPEID_PLAYER)
+                return static_cast<Player const*>(master);
+            if (ObjectGuid const& masterMasterGuid = (master->*getter)())
+            {
+                if (Unit const* masterMaster = ObjectAccessor::GetUnit(*this, masterMasterGuid))
+                {
+                    if (masterMaster->GetTypeId() == TYPEID_PLAYER)
+                        return static_cast<Player const*>(masterMaster);
+                }
+            }
+        }
+    }
+    else if (GetTypeId() == TYPEID_PLAYER)
+        return static_cast<Player const*>(this);
+    return nullptr;
+}
+
+/////////////////////////////////////////////////
 /// Get faction template to faction tenplate reaction
 ///
 /// @note Relations API Tier 1
@@ -68,9 +106,8 @@
 /////////////////////////////////////////////////
 static inline ReputationRank GetFactionReaction(FactionTemplateEntry const* thisTemplate, FactionTemplateEntry const* otherTemplate)
 {
-    // Simple sanity check
-    if (!thisTemplate || !otherTemplate)
-        return REP_NEUTRAL;
+    MANGOS_ASSERT(thisTemplate)
+    MANGOS_ASSERT(otherTemplate)
 
     // Original logic begins
 
@@ -79,9 +116,9 @@ static inline ReputationRank GetFactionReaction(FactionTemplateEntry const* this
 
     if (thisTemplate->enemyFaction[0] && otherTemplate->faction)
     {
-        for (int i = 0; i < 4; ++i)
+        for (unsigned int i : thisTemplate->enemyFaction)
         {
-            if (thisTemplate->enemyFaction[i] == otherTemplate->faction)
+            if (i == otherTemplate->faction)
                 return REP_HOSTILE;
         }
     }
@@ -91,9 +128,9 @@ static inline ReputationRank GetFactionReaction(FactionTemplateEntry const* this
 
     if (thisTemplate->friendFaction[0] && otherTemplate->faction)
     {
-        for (int i = 0; i < 4; ++i)
+        for (unsigned int i : thisTemplate->friendFaction)
         {
-            if (thisTemplate->friendFaction[i] == otherTemplate->faction)
+            if (i == otherTemplate->faction)
                 return REP_FRIENDLY;
         }
     }
@@ -103,9 +140,9 @@ static inline ReputationRank GetFactionReaction(FactionTemplateEntry const* this
 
     if (otherTemplate->friendFaction[0] && thisTemplate->faction)
     {
-        for (int i = 0; i < 4; ++i)
+        for (unsigned int i : otherTemplate->friendFaction)
         {
-            if (otherTemplate->friendFaction[i] == thisTemplate->faction)
+            if (i == thisTemplate->faction)
                 return REP_FRIENDLY;
         }
     }
@@ -123,15 +160,13 @@ static inline ReputationRank GetFactionReaction(FactionTemplateEntry const* this
 /////////////////////////////////////////////////
 static ReputationRank GetFactionReaction(FactionTemplateEntry const* thisTemplate, Unit const* unit)
 {
-    // Simple sanity check
-    if (!unit)
-        return REP_NEUTRAL;
+    MANGOS_ASSERT(unit)
 
     // Original logic begins
 
     if (thisTemplate)
     {
-        if (const FactionTemplateEntry* unitFactionTemplate = unit->getFactionTemplateEntry())
+        if (const FactionTemplateEntry* unitFactionTemplate = unit->GetFactionTemplateEntry())
         {
             if (unit->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
             {
@@ -145,7 +180,7 @@ static ReputationRank GetFactionReaction(FactionTemplateEntry const* thisTemplat
 
                     if (!unit->HasFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_IGNORE_REPUTATION))
                     {
-                        const FactionEntry* thisFactionEntry = sFactionStore.LookupEntry(thisTemplate->faction);
+                        const FactionEntry* thisFactionEntry = sFactionStore.LookupEntry<FactionEntry>(thisTemplate->faction);
                         if (thisFactionEntry && thisFactionEntry->HasReputation())
                         {
                             const ReputationMgr& reputationMgr = unitPlayer->GetReputationMgr();
@@ -171,9 +206,7 @@ static ReputationRank GetFactionReaction(FactionTemplateEntry const* thisTemplat
 /////////////////////////////////////////////////
 ReputationRank Unit::GetReactionTo(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return REP_NEUTRAL;
+    MANGOS_ASSERT(unit)
 
     // Original logic begins
 
@@ -202,7 +235,7 @@ ReputationRank Unit::GetReactionTo(Unit const* unit) const
             }
 
             // Pre-WotLK group check: always, replaced with faction template check in WotLK
-            if (thisPlayer->IsInSameRaidWith(unitPlayer))
+            if (thisPlayer->IsInGroup(unitPlayer))
                 return REP_FRIENDLY;
 
             // Pre-WotLK FFA check, known limitation: FFA doesn't work with totem elementals both client-side and server-side
@@ -212,12 +245,12 @@ ReputationRank Unit::GetReactionTo(Unit const* unit) const
 
         if (thisPlayer)
         {
-            if (const FactionTemplateEntry* unitFactionTemplate = unit->getFactionTemplateEntry())
+            if (const FactionTemplateEntry* unitFactionTemplate = unit->GetFactionTemplateEntry())
             {
                 if (const ReputationRank* rank = thisPlayer->GetReputationMgr().GetForcedRankIfAny(unitFactionTemplate))
                     return (*rank);
 
-                const FactionEntry* unitFactionEntry = sFactionStore.LookupEntry(unitFactionTemplate->faction);
+                const FactionEntry* unitFactionEntry = sFactionStore.LookupEntry<FactionEntry>(unitFactionTemplate->faction);
 
                 // If the faction has reputation ranks available, "at war" and contested PVP flags decide outcome
                 if (!this->HasFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_IGNORE_REPUTATION) && unitFactionEntry && unitFactionEntry->HasReputation())
@@ -231,14 +264,14 @@ ReputationRank Unit::GetReactionTo(Unit const* unit) const
         }
     }
     // Default fallback if player-specific checks didn't catch anything: facton to unit
-    ReputationRank reaction = GetFactionReaction(getFactionTemplateEntry(), unit);
+    ReputationRank reaction = GetFactionReaction(GetFactionTemplateEntry(), unit);
 
     // Persuation support
     if (reaction > REP_HOSTILE && reaction < REP_HONORED && (unit->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PERSUADED) || GetPersuadedGuid() == unit->GetObjectGuid()))
     {
-        if (const FactionTemplateEntry* unitFactionTemplate = unit->getFactionTemplateEntry())
+        if (const FactionTemplateEntry* unitFactionTemplate = unit->GetFactionTemplateEntry())
         {
-            const FactionEntry* unitFactionEntry = sFactionStore.LookupEntry(unitFactionTemplate->faction);
+            const FactionEntry* unitFactionEntry = sFactionStore.LookupEntry<FactionEntry>(unitFactionTemplate->faction);
             if (unitFactionEntry && unitFactionEntry->HasReputation())
                 reaction = ReputationRank(int32(reaction) + 1);
         }
@@ -255,13 +288,11 @@ ReputationRank Unit::GetReactionTo(Unit const* unit) const
 /////////////////////////////////////////////////
 ReputationRank Unit::GetReactionTo(const Corpse* corpse) const
 {
-    // Simple sanity check
-    if (!corpse)
-        return REP_NEUTRAL;
+    MANGOS_ASSERT(corpse)
 
     // Original logic begins
 
-    if (const FactionTemplateEntry* thisTemplate = getFactionTemplateEntry())
+    if (const FactionTemplateEntry* thisTemplate = GetFactionTemplateEntry())
     {
         if (const uint32 corpseTemplateId = corpse->getFaction())
         {
@@ -281,15 +312,14 @@ ReputationRank Unit::GetReactionTo(const Corpse* corpse) const
 /////////////////////////////////////////////////
 ReputationRank GameObject::GetReactionTo(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return REP_NEUTRAL;
+    MANGOS_ASSERT(unit)
 
     // Original logic begins
 
     if (const Unit* owner = GetOwner())
         return owner->GetReactionTo(unit);
-    else if (const uint32 faction = GetUInt32Value(GAMEOBJECT_FACTION))
+
+    if (const uint32 faction = GetUInt32Value(GAMEOBJECT_FACTION))
     {
         if (const FactionTemplateEntry* factionTemplate = sFactionTemplateStore.LookupEntry(faction))
             return GetFactionReaction(factionTemplate, unit);
@@ -333,9 +363,7 @@ bool Unit::IsFriend(Unit const* unit) const
 /////////////////////////////////////////////////
 bool Unit::CanAttack(const Unit* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     // Original logic
 
@@ -351,7 +379,7 @@ bool Unit::CanAttack(const Unit* unit) const
     }
 
     // We can't attack unit when at least one of these flags is present on it:
-    const uint32 mask = (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_UNK_16 | UNIT_FLAG_TAXI_FLIGHT | UNIT_FLAG_NOT_SELECTABLE);
+    const uint32 mask = (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_NON_ATTACKABLE_2 | UNIT_FLAG_TAXI_FLIGHT | UNIT_FLAG_NOT_SELECTABLE);
     if (unit->HasFlag(UNIT_FIELD_FLAGS, mask))
         return false;
 
@@ -423,14 +451,12 @@ bool Unit::CanAttack(const Unit* unit) const
 /////////////////////////////////////////////////
 bool Unit::CanAttackNow(const Unit* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     // Original logic
 
     // We can't initiate attack while dead or ghost
-    if (!isAlive())
+    if (!IsAlive())
         return false;
 
     // We can't initiate attack while mounted ...
@@ -442,7 +468,7 @@ bool Unit::CanAttackNow(const Unit* unit) const
     }
 
     // We can't initiate attack on dead units
-    if (!unit->isAlive())
+    if (!unit->IsAlive())
         return false;
 
     return CanAttack(unit);
@@ -459,9 +485,7 @@ bool Unit::CanAttackNow(const Unit* unit) const
 /////////////////////////////////////////////////
 bool Unit::CanAssist(const Unit* unit, bool ignoreFlags) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     // Original logic
 
@@ -566,9 +590,7 @@ bool Unit::CanAssist(Corpse const* corpse) const
 /////////////////////////////////////////////////
 bool Unit::CanCooperate(const Unit* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     // Original logic
 
@@ -580,9 +602,9 @@ bool Unit::CanCooperate(const Unit* unit) const
     if (GetCharmerGuid() || unit->GetCharmerGuid())
         return false;
 
-    if (const FactionTemplateEntry* thisFactionTemplate = getFactionTemplateEntry())
+    if (const FactionTemplateEntry* thisFactionTemplate = GetFactionTemplateEntry())
     {
-        if (const FactionTemplateEntry* unitFactionTemplate = unit->getFactionTemplateEntry())
+        if (const FactionTemplateEntry* unitFactionTemplate = unit->GetFactionTemplateEntry())
         {
             if (thisFactionTemplate->factionGroupMask == unitFactionTemplate->factionGroupMask)
                 return (!CanAttack(unit));
@@ -600,9 +622,7 @@ bool Unit::CanCooperate(const Unit* unit) const
 /////////////////////////////////////////////////
 bool Unit::CanInteract(const GameObject* object) const
 {
-    // Simple sanity check
-    if (!object)
-        return false;
+    MANGOS_ASSERT(object)
 
     // Original logic
 
@@ -622,9 +642,7 @@ bool Unit::CanInteract(const GameObject* object) const
 /////////////////////////////////////////////////
 bool Unit::CanInteract(const Unit* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     // Original logic
 
@@ -655,9 +673,7 @@ bool Unit::CanInteract(const Unit* unit) const
 /////////////////////////////////////////////////
 bool Unit::CanInteractNow(const Unit* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     // Original logic
 
@@ -670,7 +686,7 @@ bool Unit::CanInteractNow(const Unit* unit) const
         return false;
 
     // We can't interact with anyone while being dead (this does not apply to player ghosts, which allow very limited interactions)
-    if (!isAlive() && (GetTypeId() == TYPEID_UNIT || !(static_cast<const Player*>(this)->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))))
+    if (!IsAlive() && (GetTypeId() == TYPEID_UNIT || !(static_cast<const Player*>(this)->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))))
         return false;
 
     // We can't interact with anyone while being shapeshifted, unless form flags allow us to do so
@@ -684,7 +700,7 @@ bool Unit::CanInteractNow(const Unit* unit) const
     }
 
     // We can't interact with dead units, unless it's a creature with special flag
-    if (!unit->isAlive())
+    if (!unit->IsAlive())
     {
         if (GetTypeId() != TYPEID_UNIT || !(static_cast<const Creature*>(unit)->GetCreatureInfo()->CreatureTypeFlags & CREATURE_TYPEFLAGS_INTERACT_DEAD))
             return false;
@@ -695,7 +711,7 @@ bool Unit::CanInteractNow(const Unit* unit) const
         return false;
 
     // We can't interact with units who are currently fighting
-    if (unit->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PET_IN_COMBAT) ||  unit->getVictim())
+    if (unit->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PET_IN_COMBAT) || unit->GetVictim())
         return false;
 
     return CanInteract(unit);
@@ -711,9 +727,7 @@ bool Unit::CanInteractNow(const Unit* unit) const
 /////////////////////////////////////////////////
 bool Unit::IsTrivialForTarget(Unit const* pov) const
 {
-    // Simple sanity check
-    if (!pov)
-        return false;
+    MANGOS_ASSERT(pov)
 
     // Original logic adapation for server (original function was operating as a local player PoV only)
 
@@ -736,15 +750,49 @@ bool Unit::IsTrivialForTarget(Unit const* pov) const
 /////////////////////////////////////////////////
 bool Unit::IsCivilianForTarget(Unit const* pov) const
 {
-    // Simple sanity check
-    if (!pov)
-        return false;
+    MANGOS_ASSERT(pov)
 
     // Original logic
 
     // PvP-enabled enemy npcs with civilian flag
     if (IsPvP() && GetTypeId() == TYPEID_UNIT && static_cast<const Creature*>(this)->IsCivilian())
         return (IsTrivialForTarget(pov) && IsEnemy(pov));
+
+    return false;
+}
+
+/////////////////////////////////////////////////
+/// Group: Unit counts as being placed in the same group (party or raid) with another unit (for gameplay purposes)
+///
+/// @note Relations API Tier 1
+///
+/// Based on client-side counterpart: <tt>static CGUnit_C::IsUnitInGroup(const CGUnit_C *this, const CGUnit_C *unit)</tt>
+/// Points of view are swapped to fit in with the rest of API, logic is preserved.
+/// Additionally contains optional detection of same group from UI standpoint (ignoring charms).
+/////////////////////////////////////////////////
+bool Unit::IsInGroup(Unit const* other, bool party/* = false*/, bool ignoreCharms/* = false*/) const
+{
+    MANGOS_ASSERT(other)
+
+    // Original logic adaptation for server (original function was operating as a local player PoV only)
+
+    // Same unit is always in group with itself
+    if (this == other)
+        return true;
+
+    // Only player controlled
+    if (this->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED) && other->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+    {
+        // Check if controlling players are in the same group (same logic as client, but not local)
+        if (const Player* thisPlayer = GetControllingPlayer(ignoreCharms))
+        {
+            if (const Player* otherPlayer = other->GetControllingPlayer(ignoreCharms))
+            {
+                const Group* group = thisPlayer->GetGroup();
+                return (thisPlayer == otherPlayer || (group && group == otherPlayer->GetGroup() && (!party || group->SameSubGroup(thisPlayer, otherPlayer))));
+            }
+        }
+    }
 
     return false;
 }
@@ -817,13 +865,12 @@ bool WorldObject::IsFriend(Unit const* /*unit*/) const
 /////////////////////////////////////////////////
 bool GameObject::IsEnemy(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     if (const Unit* owner = GetOwner())
         return owner->IsEnemy(unit);
-    else if (const uint32 faction = GetUInt32Value(GAMEOBJECT_FACTION))
+
+    if (const uint32 faction = GetUInt32Value(GAMEOBJECT_FACTION))
     {
         if (const FactionTemplateEntry* factionTemplate = sFactionTemplateStore.LookupEntry(faction))
             return (GetFactionReaction(factionTemplate, unit) < REP_UNFRIENDLY);
@@ -842,13 +889,12 @@ bool GameObject::IsEnemy(Unit const* unit) const
 /////////////////////////////////////////////////
 bool GameObject::IsFriend(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     if (const Unit* owner = GetOwner())
         return owner->IsFriend(unit);
-    else if (const uint32 faction = GetUInt32Value(GAMEOBJECT_FACTION))
+
+    if (const uint32 faction = GetUInt32Value(GAMEOBJECT_FACTION))
     {
         if (const FactionTemplateEntry* factionTemplate = sFactionTemplateStore.LookupEntry(faction))
             return (GetFactionReaction(factionTemplate, unit) > REP_NEUTRAL);
@@ -867,9 +913,7 @@ bool GameObject::IsFriend(Unit const* unit) const
 /////////////////////////////////////////////////
 ReputationRank DynamicObject::GetReactionTo(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return REP_NEUTRAL;
+    MANGOS_ASSERT(unit)
 
     if (const Unit* caster = GetCaster())
         return caster->GetReactionTo(unit);
@@ -887,9 +931,7 @@ ReputationRank DynamicObject::GetReactionTo(Unit const* unit) const
 /////////////////////////////////////////////////
 bool DynamicObject::IsEnemy(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     if (const Unit* caster = GetCaster())
         return caster->IsEnemy(unit);
@@ -907,9 +949,7 @@ bool DynamicObject::IsEnemy(Unit const* unit) const
 /////////////////////////////////////////////////
 bool DynamicObject::IsFriend(Unit const* unit) const
 {
-    // Simple sanity check
-    if (!unit)
-        return false;
+    MANGOS_ASSERT(unit)
 
     if (const Unit* caster = GetCaster())
         return caster->IsFriend(unit);
@@ -917,11 +957,77 @@ bool DynamicObject::IsFriend(Unit const* unit) const
     return false;
 }
 
+/////////////////////////////////////////////////
+/// [Serverside] Group: Extension for creatures, player-controlled defaults to unit, creatures check based on friendliness
+///
+/// @note Relations API Tier 2
+///
+/// No client counterpart, since client only deals with player-controlled entities
+/////////////////////////////////////////////////
+bool Creature::IsInGroup(Unit const* other, bool party/* = false*/, bool ignoreCharms/* = false*/) const
+{
+    MANGOS_ASSERT(other)
+
+    if (this->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED) || other->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+        return Unit::IsInGroup(other, party, ignoreCharms);
+
+    // Faction-based based on research
+    return this->IsFriend(other);
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Group: Extension for players, ignoring charms also ignores PC flag presence for UI PoV
+///
+/// @note Relations API Tier 2
+///
+/// No client counterpart, since client only deals with player-controlled entities
+/////////////////////////////////////////////////
+bool Player::IsInGroup(Unit const* other, bool party/* = false*/, bool ignoreCharms/* = false*/) const
+{
+    MANGOS_ASSERT(other)
+
+    if (this != other && ignoreCharms && other->IsPlayer())
+    {
+        const Player* otherPlayer = static_cast<Player const*>(other);
+        const Group* group = this->GetGroup();
+        return (group && group == otherPlayer->GetGroup() && (!party || group->SameSubGroup(this, otherPlayer)));
+    }
+
+    return Unit::IsInGroup(other, party, ignoreCharms);
+}
+
 /*##########################
 ########            ########
 ########   TIER 3   ########
 ########            ########
 ##########################*/
+
+/////////////////////////////////////////////////
+/// [Serverside] Get player to corpse reaction
+///
+/// @note Relations API Tier 3
+///
+/// This function is a required serverside component for crossfaction functionality.
+/////////////////////////////////////////////////
+ReputationRank Player::GetReactionTo(const Corpse* corpse) const
+{
+    MANGOS_ASSERT(corpse)
+
+    if (Player* corpseOwner = sObjectMgr.GetPlayer(corpse->GetOwnerGuid()))
+    {
+        if (this != corpseOwner && GetTeam() != corpseOwner->GetTeam())
+        {
+            // [XFACTION]: Swap faction check with "Alliance Generic" and 'Horde Generic" for crossfaction functionality
+            if (sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GROUP) && IsInGroup(corpseOwner))
+            {
+                uint32 id = (GetTeam() == ALLIANCE ? 1054 : 1495);
+                return GetFactionReaction(GetFactionTemplateEntry(), sFactionTemplateStore.LookupEntry(id));
+            }
+        }
+    }
+
+    return Unit::GetReactionTo(corpse);
+}
 
 /////////////////////////////////////////////////
 /// [Serverside] Opposition: DynamicObject can target a target with a harmful spell
@@ -932,12 +1038,14 @@ bool DynamicObject::IsFriend(Unit const* unit) const
 /// Dynamic objects act as serverside proxy casters for units.
 /// It utilizes owners CanAttackSpell if owner exists
 /////////////////////////////////////////////////
-bool DynamicObject::CanAttackSpell(Unit* target, SpellEntry const* spellInfo, bool isAOE) const
+bool DynamicObject::CanAttackSpell(Unit const* target, SpellEntry const* spellInfo, bool isAOE) const
 {
+    MANGOS_ASSERT(target)
+
     if (Unit* owner = GetCaster())
         return owner->CanAttackSpell(target, spellInfo, isAOE);
-    else
-        return false;
+
+    return false;
 }
 
 /////////////////////////////////////////////////
@@ -949,12 +1057,14 @@ bool DynamicObject::CanAttackSpell(Unit* target, SpellEntry const* spellInfo, bo
 /// Dynamic objects act as serverside proxy casters for units.
 /// It utilizes owners CanAssistSpell if owner exists
 /////////////////////////////////////////////////
-bool DynamicObject::CanAssistSpell(Unit* target, SpellEntry const* spellInfo) const
+bool DynamicObject::CanAssistSpell(Unit const* target, SpellEntry const* spellInfo) const
 {
+    MANGOS_ASSERT(target)
+
     if (Unit* owner = GetCaster())
         return owner->CanAttackSpell(target, spellInfo);
-    else
-        return false;
+
+    return false;
 }
 
 /////////////////////////////////////////////////
@@ -966,11 +1076,15 @@ bool DynamicObject::CanAssistSpell(Unit* target, SpellEntry const* spellInfo) co
 /// Some gameobjects can be involved in spell casting, so server needs additional API support.
 /// It utilizes owners CanAttackSpell if owner exists
 /////////////////////////////////////////////////
-bool GameObject::CanAttackSpell(Unit* target, SpellEntry const* spellInfo, bool isAOE) const
+bool GameObject::CanAttackSpell(Unit const* target, SpellEntry const* spellInfo, bool isAOE) const
 {
-    Unit* owner = GetOwner();
-    if (owner)
+    MANGOS_ASSERT(target)
+
+    if (Unit* owner = GetOwner())
         return owner->CanAttackSpell(target, spellInfo, isAOE);
+
+    if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+        return !IsFriend(target);
 
     return IsEnemy(target);
 }
@@ -984,11 +1098,15 @@ bool GameObject::CanAttackSpell(Unit* target, SpellEntry const* spellInfo, bool 
 /// Some gameobjects can be involved in spell casting, so server needs additional API support.
 /// It utilizes owners CanAssistSpell if owner exists
 /////////////////////////////////////////////////
-bool GameObject::CanAssistSpell(Unit* target, SpellEntry const* spellInfo) const
+bool GameObject::CanAssistSpell(Unit const* target, SpellEntry const* spellInfo) const
 {
-    Unit* owner = GetOwner();
-    if (owner)
+    MANGOS_ASSERT(target)
+
+    if (Unit* owner = GetOwner())
         return owner->CanAssistSpell(target, spellInfo);
+
+    if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+        return !IsEnemy(target);
 
     return IsFriend(target);
 }
@@ -1003,48 +1121,57 @@ bool GameObject::CanAssistSpell(Unit* target, SpellEntry const* spellInfo) const
 /// Also an additional fine grained check needs to be done for AOE spells, because they
 /// need to skip PVP enabled targets in some special cases. (Chain spells, AOE)
 /////////////////////////////////////////////////
-bool Unit::CanAttackSpell(Unit* target, SpellEntry const* spellInfo, bool isAOE) const
+bool Unit::CanAttackSpell(Unit const* target, SpellEntry const* spellInfo, bool isAOE) const
 {
+    MANGOS_ASSERT(target)
+
     if (spellInfo)
     {
         // inversealive is needed for some spells which need to be casted at dead targets (aoe)
-        if (!target->isAlive() && !spellInfo->HasAttribute(SPELL_ATTR_EX2_CAN_TARGET_DEAD))
+        if (!target->IsAlive() && !spellInfo->HasAttribute(SPELL_ATTR_EX2_CAN_TARGET_DEAD))
             return false;
     }
 
     if (CanAttack(target))
     {
-        if (isAOE)
+        if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
         {
             if (HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
             {
-                if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+                // PVP-flagged PC units cant *unintentionally* attack PVP-unflagged PC units with AOE (unless in FFA action) and vice versa
+                // Pre-WotLK: Using reverse Unit::CanAttack() checks:
+                if (isAOE)
                 {
-                    const Player* thisPlayer = GetControllingPlayer();
-                    if (!thisPlayer)
-                        return true;
-
-                    const Player* unitPlayer = target->GetControllingPlayer();
-                    if (!unitPlayer)
-                        return true;
-
-                    if (thisPlayer->IsInDuelWith(unitPlayer))
-                        return true;
-
-                    if (unitPlayer->IsPvP() && (!isAOE || thisPlayer->IsPvP()))
-                        return true;
-
-                    if (thisPlayer->IsPvPFreeForAll() && unitPlayer->IsPvPFreeForAll())
-                        return true;
-
-                    return false;
+                    if (const Player* thisPlayer = GetControllingPlayer())
+                    {
+                        if (const Player* unitPlayer = target->GetControllingPlayer())
+                        {
+                            if (!thisPlayer->IsInDuelWith(unitPlayer) && thisPlayer->IsPvP() != unitPlayer->IsPvP())
+                                return (thisPlayer->IsPvPFreeForAll() && unitPlayer->IsPvPFreeForAll());
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // NPC units cant *unintentionally* attack non-hostile PC units which aren't at war with them
+                if (!IsEnemy(target))
+                {
+                    if (const Player* unitPlayer = target->GetControllingPlayer())
+                    {
+                        if (const FactionTemplateEntry* thisFactionTemplate = GetFactionTemplateEntry())
+                        {
+                            const FactionEntry* thisFactionEntry = sFactionStore.LookupEntry<FactionEntry>(thisFactionTemplate->faction);
+                            if (thisFactionEntry && thisFactionEntry->HasReputation())
+                                return unitPlayer->GetReputationMgr().IsAtWar(thisFactionEntry);
+                        }
+                    }
                 }
             }
         }
-
         return true;
     }
-    else return false;
+    return false;
 }
 
 /////////////////////////////////////////////////
@@ -1055,9 +1182,9 @@ bool Unit::CanAttackSpell(Unit* target, SpellEntry const* spellInfo, bool isAOE)
 /// This function is not intented to have client-side counterpart by original design.
 /// It utilizes owners CanAssistSpell if owner exists
 /////////////////////////////////////////////////
-bool Unit::CanAssistSpell(Unit* target, SpellEntry const* spellInfo) const
+bool Unit::CanAssistSpell(Unit const* target, SpellEntry const* spellInfo) const
 {
-    return CanAssist(target);
+    return CanAssist(target, (spellInfo && spellInfo->HasAttribute(SPELL_ATTR_EX6_ASSIST_IGNORE_IMMUNE_FLAG)));
 }
 
 /////////////////////////////////////////////////
@@ -1066,10 +1193,180 @@ bool Unit::CanAssistSpell(Unit* target, SpellEntry const* spellInfo) const
 /// @note Relations API Tier 3
 ///
 /// This function is not intented to have client-side counterpart by original design.
-/// It utilizes CanAttack with a small exclusion for Feign-Death targets and a hostile-only check.
 /// Typically used in AIs in MoveInLineOfSight
 /////////////////////////////////////////////////
-bool Unit::CanAttackOnSight(Unit* target)
+bool Unit::CanAttackOnSight(Unit const* target) const
 {
-    return CanAttack(target) && !target->IsFeigningDeathSuccessfully() && IsEnemy(target);
+    MANGOS_ASSERT(target)
+
+    // Do not aggro on a unit which is moving home at the moment
+    if (target->GetCombatManager().IsEvadingHome())
+        return false;
+
+    // Do not aggro while a successful feign death is active
+    if (target->IsFeigningDeathSuccessfully())
+        return false;
+
+    // Pets in disabled state (e.g. when player is mounted) do not draw aggro on sight
+    // TODO: Fix for temporary pets and charms
+    if (target->GetTypeId() == TYPEID_UNIT && static_cast<Creature const*>(target)->IsPet() && static_cast<Pet const*>(target)->GetModeFlags() & PET_MODE_DISABLE_ACTIONS)
+        return false;
+
+    return (CanAttack(target) && IsEnemy(target));
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Fog of War: Unit can be seen by other unit through invisibility effects
+///
+/// @note Relations API Tier 3
+///
+/// This function is not intented to have client-side counterpart by original design.
+/// A helper function to determine if unit is always visible to another unit.
+/////////////////////////////////////////////////
+bool Unit::IsFogOfWarVisibleStealth(Unit const* other) const
+{
+    MANGOS_ASSERT(other)
+
+    // Gamemasters can see through invisibility
+    if (other->GetTypeId() == TYPEID_PLAYER && static_cast<Player const*>(other)->isGameMaster())
+        return true;
+
+    switch (sWorld.getConfig(CONFIG_UINT32_FOGOFWAR_STEALTH))
+    {
+        default: return IsInGroup(other);
+        case 1:  return CanCooperate(other);
+    }
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Fog of War: Unit's health values can be seen by other unit
+///
+/// @note Relations API Tier 3
+///
+/// This function is not intented to have client-side counterpart by original design.
+/// A helper function to determine if unit's health values are always visible to another unit.
+/////////////////////////////////////////////////
+bool Unit::IsFogOfWarVisibleHealth(Unit const* other) const
+{
+    MANGOS_ASSERT(other)
+
+    // Gamemasters can see health values
+    if (other->GetTypeId() == TYPEID_PLAYER && static_cast<Player const*>(other)->isGameMaster())
+        return true;
+
+    switch (sWorld.getConfig(CONFIG_UINT32_FOGOFWAR_HEALTH))
+    {
+        default: return IsInGroup(other, false, true);
+        case 1:  return IsInTeam(other);
+        case 2:  return true;
+    }
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Fog of War: Unit's stat values can be seen by other unit
+///
+/// @note Relations API Tier 3
+///
+/// This function is not intented to have client-side counterpart by original design.
+/// A helper function to determine if unit's stat values are always visible to another unit.
+/////////////////////////////////////////////////
+bool Unit::IsFogOfWarVisibleStats(Unit const* other) const
+{
+    MANGOS_ASSERT(other)
+
+    // Gamemasters can see stat values
+    if (other->GetTypeId() == TYPEID_PLAYER && static_cast<Player const*>(other)->isGameMaster())
+        return true;
+
+    switch (sWorld.getConfig(CONFIG_UINT32_FOGOFWAR_STATS))
+    {
+        default: return (this == other || GetSummonerGuid() == other->GetObjectGuid());
+        case 1:  return IsInTeam(other);
+        case 2:  return true;
+    }
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Guild: Unit counts as being placed in the same guild with another unit (for gameplay purposes)
+///
+/// @note Relations API Tier 3
+///
+/// Loosely inspired by client-side Lua script counterpart: <tt>UnitIsInMyGuild()</tt>
+/// Additionally contains optional detection of same guild from UI standpoint (ignoring charms).
+/////////////////////////////////////////////////
+bool Unit::IsInGuild(Unit const* other, bool ignoreCharms/* = false*/) const
+{
+    MANGOS_ASSERT(other)
+
+    // Same unit is always in guild with itself
+    if (this == other)
+        return true;
+
+    // Only player controlled
+    if (this->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED) && other->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+    {
+        // Check if controlling players are in the same group (same logic as client, but not local)
+        if (const Player* thisPlayer = GetControllingPlayer(ignoreCharms))
+        {
+            if (const Player* otherPlayer = other->GetControllingPlayer(ignoreCharms))
+                return (thisPlayer == otherPlayer || (thisPlayer->GetGuildId() == otherPlayer->GetGuildId()));
+        }
+    }
+
+    return false;
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Team: Check if both units are in the same faction team (for gameplay purposes)
+///
+/// @note Relations API Tier 3
+///
+/// Loosely inspired by client-side Lua script counterpart: <tt>UnitFactionGroup()</tt>
+/// Additionally contains optional detection of same team temporarily with taking charms in account.
+bool Unit::IsInTeam(const Unit *other, bool ignoreCharms) const
+{
+    MANGOS_ASSERT(other)
+
+    // Same unit is always in team with itself
+    if (this == other)
+        return true;
+
+    // Only player controlled
+    if (this->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED) && other->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+    {
+        // Check if controlling players are in the same group (same logic as client, but not local)
+        if (const Player* thisPlayer = GetControllingPlayer(ignoreCharms))
+        {
+            if (const Player* otherPlayer = other->GetControllingPlayer(ignoreCharms))
+                return (thisPlayer == otherPlayer || (thisPlayer->GetTeam() == otherPlayer->GetTeam()));
+        }
+    }
+
+    return false;
+}
+
+/////////////////////////////////////////////////
+/// [Serverside] Opposition: this can assist who in attacking enemy
+///
+/// @note Relations API Tier 3
+///
+/// This function is not intented to have client-side counterpart by original design.
+/// A helper function used to determine if current unit can assist who against enemy
+/// Used in several assistance checks
+/////////////////////////////////////////////////
+bool Unit::CanAssistInCombatAgainst(Unit const* who, Unit const* enemy) const
+{
+    MANGOS_ASSERT(who)
+    MANGOS_ASSERT(enemy)
+
+    if (GetMap()->Instanceable()) // in dungeons nothing else needs to be evaluated
+        return true;
+
+    if (IsInCombat()) // if fighting something else, do not assist
+        return false;
+
+    if (CanAssist(who) && CanAttackOnSight(enemy))
+        return true;
+
+    return false;
 }

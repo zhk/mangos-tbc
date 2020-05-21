@@ -21,7 +21,7 @@ SDComment: Not all yells are implemented.
 SDCategory: Auchindoun, Shadow Labyrinth
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "shadow_labyrinth.h"
 
 enum
@@ -140,7 +140,7 @@ struct boss_blackheart_the_inciterAI : public ScriptedAI
         }
 
         // Return since we have no pTarget
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiInciteChaosTimer < uiDiff)
@@ -163,10 +163,15 @@ struct boss_blackheart_the_inciterAI : public ScriptedAI
         // Charge Timer
         if (m_uiChargeTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, SPELL_CHARGE, SELECT_FLAG_NOT_IN_MELEE_RANGE))
+            m_uiChargeTimer = 0;
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, SPELL_CHARGE, SELECT_FLAG_PLAYER | SELECT_FLAG_NOT_IN_MELEE_RANGE))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_CHARGE) == CAST_OK)
+                {
                     m_uiChargeTimer = urand(30000, 43000);
+                    DoResetThreat();
+                    return;
+                }
             }
         }
         else
@@ -185,16 +190,14 @@ struct boss_blackheart_the_inciterAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_blackheart_the_inciter(Creature* pCreature)
+UnitAI* GetAI_boss_blackheart_the_inciter(Creature* pCreature)
 {
     return new boss_blackheart_the_inciterAI(pCreature);
 }
 
 void AddSC_boss_blackheart_the_inciter()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_blackheart_the_inciter";
     pNewScript->GetAI = &GetAI_boss_blackheart_the_inciter;
     pNewScript->RegisterSelf();

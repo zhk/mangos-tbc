@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Tempest Keep, The Arcatraz
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "arcatraz.h"
 
 enum
@@ -38,6 +38,7 @@ enum
     SAY_WHIRLWIND_2                 = -1552037,
     SAY_DEATH                       = -1552038,
 
+    SPELL_DOUBLE_ATTACK             = 19818,
     SPELL_GIFT_DOOMSAYER            = 36173,
     SPELL_GIFT_DOOMSAYER_H          = 39009,
     SPELL_HEAL                      = 36144,
@@ -73,6 +74,8 @@ struct boss_dalliahAI : public ScriptedAI
         m_uiShadowWaveTimer     = urand(9000, 13000);
 
         m_bHasTaunted           = false;
+
+        DoCastSpellIfCan(m_creature, SPELL_DOUBLE_ATTACK, CAST_TRIGGERED | CAST_AURA_NOT_PRESENT);
     }
 
     void Aggro(Unit* /*pWho*/) override
@@ -99,12 +102,11 @@ struct boss_dalliahAI : public ScriptedAI
     void EnterEvadeMode() override
     {
         m_creature->RemoveAllAurasOnEvade();
-        m_creature->DeleteThreatList();
         m_creature->CombatStop(true);
         m_creature->LoadCreatureAddon(true);
 
         // should evade to the attack position
-        if (m_creature->isAlive())
+        if (m_creature->IsAlive())
             m_creature->GetMotionMaster()->MovePoint(1, aDalliahStartPos[0], aDalliahStartPos[1], aDalliahStartPos[2]);
 
         if (m_pInstance)
@@ -127,12 +129,12 @@ struct boss_dalliahAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiGiftDoomsayerTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), m_bIsRegularMode ? SPELL_GIFT_DOOMSAYER : SPELL_GIFT_DOOMSAYER_H) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_GIFT_DOOMSAYER : SPELL_GIFT_DOOMSAYER_H) == CAST_OK)
                 m_uiGiftDoomsayerTimer = urand(14000, 19000);
         }
         else
@@ -201,16 +203,14 @@ struct boss_dalliahAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_dalliah(Creature* pCreature)
+UnitAI* GetAI_boss_dalliah(Creature* pCreature)
 {
     return new boss_dalliahAI(pCreature);
 }
 
 void AddSC_boss_dalliah()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_dalliah";
     pNewScript->GetAI = &GetAI_boss_dalliah;
     pNewScript->RegisterSelf();

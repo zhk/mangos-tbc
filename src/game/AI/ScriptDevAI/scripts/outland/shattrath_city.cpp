@@ -28,7 +28,7 @@ npc_khadgars_servant
 npc_salsalabim
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "World/WorldState.h"
 
@@ -115,7 +115,7 @@ struct npc_dirty_larryAI : public ScriptedAI
         {
             if (Creature* pCreepjack = m_creature->GetMap()->GetCreature(m_creepjackGuid))
             {
-                if (!pCreepjack->IsInEvadeMode() && pCreepjack->isAlive())
+                if (!pCreepjack->GetCombatManager().IsInEvadeMode() && pCreepjack->IsAlive())
                     pCreepjack->AI()->EnterEvadeMode();
 
                 pCreepjack->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
@@ -123,7 +123,7 @@ struct npc_dirty_larryAI : public ScriptedAI
 
             if (Creature* pMalone = m_creature->GetMap()->GetCreature(m_maloneGuid))
             {
-                if (!pMalone->IsInEvadeMode() && pMalone->isAlive())
+                if (!pMalone->GetCombatManager().IsInEvadeMode() && pMalone->IsAlive())
                     pMalone->AI()->EnterEvadeMode();
 
                 pMalone->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
@@ -164,22 +164,22 @@ struct npc_dirty_larryAI : public ScriptedAI
                 m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
                 SetReactState(REACT_AGGRESSIVE);
 
-                if (pPlayer->isAlive())
+                if (pPlayer->IsAlive())
                 {
-                    if (!m_creature->isInCombat())
+                    if (!m_creature->IsInCombat())
                         AttackStart(pPlayer);
 
                     if (Creature* pMalone = m_creature->GetMap()->GetCreature(m_maloneGuid))
                     {
                         pMalone->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
-                        if (!pMalone->isInCombat())
+                        if (!pMalone->IsInCombat())
                             pMalone->AI()->AttackStart(pPlayer);
                     }
 
                     if (Creature* pCreepjack = m_creature->GetMap()->GetCreature(m_creepjackGuid))
                     {
                         pCreepjack->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
-                        if (!pCreepjack->isInCombat())
+                        if (!pCreepjack->IsInCombat())
                             pCreepjack->AI()->AttackStart(pPlayer);
                     }
                 }
@@ -200,7 +200,7 @@ struct npc_dirty_larryAI : public ScriptedAI
 
     void AttackedBy(Unit* pAttacker) override
     {
-        if (m_creature->getVictim())
+        if (m_creature->GetVictim())
             return;
 
         if (!bActiveAttack)
@@ -209,34 +209,33 @@ struct npc_dirty_larryAI : public ScriptedAI
         AttackStart(pAttacker);
     }
 
-    void DamageTaken(Unit* /*pDoneBy*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (uiDamage < m_creature->GetHealth())
+        if (damage < m_creature->GetHealth())
             return;
 
-        uiDamage = 0;
+        damage = std::min(damage, m_creature->GetHealth() - 1);
 
         // damage will kill, this is pretty much the same as 1%HP left
         if (bEvent)
         {
             m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
             SetReactState(REACT_PASSIVE);
-            m_creature->DeleteThreatList();
             m_creature->CombatStop();
 
             if (Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid))
-                pPlayer->GroupEventHappens(QUEST_WHAT_BOOK, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_WHAT_BOOK, m_creature);
 
             if (Creature* pCreepjack = m_creature->GetMap()->GetCreature(m_creepjackGuid))
             {
-                if (!pCreepjack->IsInEvadeMode() && pCreepjack->isAlive())
+                if (!pCreepjack->GetCombatManager().IsInEvadeMode() && pCreepjack->IsAlive())
                     pCreepjack->AI()->EnterEvadeMode();
 
                 pCreepjack->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
             }
             if (Creature* pMalone = m_creature->GetMap()->GetCreature(m_maloneGuid))
             {
-                if (!pMalone->IsInEvadeMode() && pMalone->isAlive())
+                if (!pMalone->GetCombatManager().IsInEvadeMode() && pMalone->IsAlive())
                     pMalone->AI()->EnterEvadeMode();
 
                 pMalone->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
@@ -256,7 +255,7 @@ struct npc_dirty_larryAI : public ScriptedAI
                 m_uiSayTimer -= diff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
@@ -288,7 +287,7 @@ bool GossipSelect_npc_dirty_larry(Player* pPlayer, Creature* pCreature, uint32 /
     return true;
 }
 
-CreatureAI* GetAI_npc_dirty_larry(Creature* pCreature)
+UnitAI* GetAI_npc_dirty_larry(Creature* pCreature)
 {
     return new npc_dirty_larryAI(pCreature);
 }
@@ -579,7 +578,7 @@ struct npc_khadgars_servantAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_khadgars_servant(Creature* pCreature)
+UnitAI* GetAI_npc_khadgars_servant(Creature* pCreature)
 {
     return new npc_khadgars_servantAI(pCreature);
 }
@@ -607,14 +606,14 @@ struct npc_salsalabimAI : public ScriptedAI
         m_uiMagneticPullTimer = 15000;
     }
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* pDoneBy, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
         if (pDoneBy->GetTypeId() == TYPEID_PLAYER)
         {
             if (m_creature->GetHealthPercent() < 20.0f)
             {
-                ((Player*)pDoneBy)->GroupEventHappens(QUEST_10004, m_creature);
-                uiDamage = 0;
+                ((Player*)pDoneBy)->RewardPlayerAndGroupAtEventExplored(QUEST_10004, m_creature);
+                damage = std::min(damage, m_creature->GetHealth() - 1);
                 EnterEvadeMode();
             }
         }
@@ -622,12 +621,12 @@ struct npc_salsalabimAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiMagneticPullTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_MAGNETIC_PULL);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_MAGNETIC_PULL);
             m_uiMagneticPullTimer = 15000;
         }
         else
@@ -637,7 +636,7 @@ struct npc_salsalabimAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_salsalabim(Creature* pCreature)
+UnitAI* GetAI_npc_salsalabim(Creature* pCreature)
 {
     return new npc_salsalabimAI(pCreature);
 }
@@ -662,18 +661,26 @@ bool GossipHello_npc_salsalabim(Player* pPlayer, Creature* pCreature)
 
 enum
 {
-    QUEST_KAELTHAS_AND_THE_VERDANT_SPHERE = 11007,
+    QUEST_KAELTHAS_AND_THE_VERDANT_SPHERE   = 11007,
+    QUEST_TRIAL_OF_THE_NAARU_MAGTHERIDON    = 10888,
+    QUEST_CUDGEL_OF_KARDESH                 = 10901,
+    TITLE_CHAMPION_OF_THE_NAARU             = 53,
 
     SCRIPT_RELAY_ID = 10061,
 };
 
-bool QuestRewarded_npc_adal(Player* pPlayer, Creature* pCreature, Quest const* pQuest)
+bool QuestRewarded_npc_adal(Player* player, Creature* creature, Quest const* quest)
 {
-    if (pQuest->GetQuestId() == QUEST_KAELTHAS_AND_THE_VERDANT_SPHERE)
+    switch (quest->GetQuestId())
     {
-        sWorldState.HandleExternalEvent(CUSTOM_EVENT_ADALS_SONG_OF_BATTLE);
-        pPlayer->GetMap()->ScriptsStart(sRelayScripts, SCRIPT_RELAY_ID, pCreature, pPlayer, Map::SCRIPT_EXEC_PARAM_UNIQUE_BY_SOURCE); // only once active per adal
-        return true; // handled
+        case QUEST_TRIAL_OF_THE_NAARU_MAGTHERIDON:
+            if (player->GetQuestStatus(QUEST_CUDGEL_OF_KARDESH) == QUEST_STATUS_COMPLETE)
+                player->SetTitle(TITLE_CHAMPION_OF_THE_NAARU);
+            break;
+        case QUEST_KAELTHAS_AND_THE_VERDANT_SPHERE:
+            sWorldState.HandleExternalEvent(CUSTOM_EVENT_ADALS_SONG_OF_BATTLE);
+            player->GetMap()->ScriptsStart(sRelayScripts, SCRIPT_RELAY_ID, creature, player, Map::SCRIPT_EXEC_PARAM_UNIQUE_BY_SOURCE); // only once active per adal
+            return true; // handled
     }
 
     return false; // unhandled
@@ -681,9 +688,7 @@ bool QuestRewarded_npc_adal(Player* pPlayer, Creature* pCreature, Quest const* p
 
 void AddSC_shattrath_city()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_dirty_larry";
     pNewScript->GetAI = &GetAI_npc_dirty_larry;
     pNewScript->pGossipHello = &GossipHello_npc_dirty_larry;

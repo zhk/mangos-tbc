@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Zul'Gurub
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -58,7 +58,7 @@ struct boss_hazzarahAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // ManaBurn_Timer
@@ -110,16 +110,14 @@ struct boss_hazzarahAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_hazzarah(Creature* pCreature)
+UnitAI* GetAI_boss_hazzarah(Creature* pCreature)
 {
     return new boss_hazzarahAI(pCreature);
 }
 
 void AddSC_boss_hazzarah()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_hazzarah";
     pNewScript->GetAI = &GetAI_boss_hazzarah;
     pNewScript->RegisterSelf();

@@ -27,7 +27,7 @@ npc_warden_mellichar
 mob_zerekethvoidzone
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "arcatraz.h"
 
 /*#####
@@ -132,12 +132,11 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
     void EnterEvadeMode() override
     {
         m_creature->RemoveAllAurasOnEvade();
-        m_creature->DeleteThreatList();
         m_creature->CombatStop(true);
         m_creature->LoadCreatureAddon(true);
 
         // Boss should evade in the center of the room
-        if (m_creature->isAlive())
+        if (m_creature->IsAlive())
             m_creature->GetMotionMaster()->MovePoint(1, fRoomCenterCoords[0], fRoomCenterCoords[1], fRoomCenterCoords[2]);
 
         m_creature->SetLootRecipient(nullptr);
@@ -184,7 +183,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
     {
         DialogueUpdate(uiDiff);
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (!m_bHasLowHp && m_creature->GetHealthPercent() < 20.0f)
@@ -195,7 +194,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
 
         if (m_uiPyroblastTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_PYROBLAST) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_PYROBLAST) == CAST_OK)
             {
                 m_uiPyroblastTimer = 40000;
                 DoScriptText(SAY_PYRO, m_creature);
@@ -206,7 +205,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
 
         if (m_uiFireballTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_FIREBALL) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_FIREBALL) == CAST_OK)
                 m_uiFireballTimer = 4000;
         }
         else
@@ -214,7 +213,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
 
         if (m_uiFrostBoltTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_FROSTBOLT) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_FROSTBOLT) == CAST_OK)
                 m_uiFrostBoltTimer = urand(4000, 6000);
         }
         else
@@ -230,7 +229,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
 
         if (m_uiFireBlastTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_FIRE_BLAST) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_FIRE_BLAST) == CAST_OK)
                 m_uiFireBlastTimer = urand(5000, 16000);
         }
         else
@@ -238,7 +237,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
 
         if (m_uiArcaneMissileTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_ARCANE_MISSILES) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_ARCANE_MISSILES) == CAST_OK)
                 m_uiArcaneMissileTimer = urand(5000, 8000);
         }
         else
@@ -248,7 +247,7 @@ struct npc_millhouse_manastormAI : public ScriptedAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_npc_millhouse_manastorm(Creature* pCreature)
+UnitAI* GetAI_npc_millhouse_manastorm(Creature* pCreature)
 {
     return new npc_millhouse_manastormAI(pCreature);
 }
@@ -342,16 +341,78 @@ struct npc_warden_mellicharAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_warden_mellichar(Creature* pCreature)
+UnitAI* GetAI_npc_warden_mellichar(Creature* pCreature)
 {
     return new npc_warden_mellicharAI(pCreature);
 }
 
+/*######
+## npc_arcatraz_defender
+######*/
+
+enum
+{
+    SPELL_FLAMING_WEAPON    = 36601,
+    SPELL_FLAMING_WEAPON_H  = 38804,
+    SPELL_PROTEAN_SUBDUAL   = 36288,
+    SPELL_PROTEAN_SUBDUAL_H = 40449,
+};
+
+struct npc_arcatraz_defenderAI : public ScriptedAI
+{
+    npc_arcatraz_defenderAI(Creature* pCreature) : ScriptedAI(pCreature)
+    {
+        m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
+        Reset();
+    }
+
+    bool m_bIsRegularMode;
+    uint32 m_uiFlamingWeaponTimer;
+    uint32 m_uiProteanSubdualTimer;
+
+    void Reset() override
+    {
+        m_uiFlamingWeaponTimer = urand(3000, 6000);
+        m_uiProteanSubdualTimer = 2000;
+    }
+
+    void UpdateAI(const uint32 uiDiff) override
+    {
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
+            return;
+
+        if (m_uiFlamingWeaponTimer < uiDiff)
+        {
+            if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_FLAMING_WEAPON : SPELL_FLAMING_WEAPON_H) == CAST_OK)
+                m_uiFlamingWeaponTimer = urand(3000, 6000);
+        }
+        else
+            m_uiFlamingWeaponTimer -= uiDiff;
+
+        // this spell should only be used against Protean Horror and Protean Nightmare, never players
+        if (m_creature->GetVictim() && m_creature->GetVictim()->GetTypeId() != TYPEID_PLAYER)
+        {
+            if (m_uiProteanSubdualTimer < uiDiff)
+            {
+                if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_PROTEAN_SUBDUAL : SPELL_PROTEAN_SUBDUAL_H) == CAST_OK)
+                    m_uiProteanSubdualTimer = urand(2000, 3000);
+            }
+            else
+                m_uiProteanSubdualTimer -= uiDiff;
+        }
+
+        DoMeleeAttackIfReady();
+    }
+};
+
+UnitAI* GetAI_npc_arcatraz_defender(Creature* pCreature)
+{
+    return new npc_arcatraz_defenderAI(pCreature);
+}
+
 void AddSC_arcatraz()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_millhouse_manastorm";
     pNewScript->GetAI = &GetAI_npc_millhouse_manastorm;
     pNewScript->RegisterSelf();
@@ -359,5 +420,10 @@ void AddSC_arcatraz()
     pNewScript = new Script;
     pNewScript->Name = "npc_warden_mellichar";
     pNewScript->GetAI = &GetAI_npc_warden_mellichar;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "npc_arcatraz_defender";
+    pNewScript->GetAI = &GetAI_npc_arcatraz_defender;
     pNewScript->RegisterSelf();
 }

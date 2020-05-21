@@ -26,7 +26,7 @@ boss_hydromancer_thespia
 mob_coilfang_waterelemental
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "steam_vault.h"
 
 enum
@@ -103,13 +103,13 @@ struct boss_thespiaAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // LightningCloud_Timer
         if (m_uiLightningCloudTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_LIGHTNING_CLOUD) == CAST_OK)
                 {
@@ -125,7 +125,7 @@ struct boss_thespiaAI : public ScriptedAI
         // LungBurst_Timer
         if (m_uiLungBurstTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_LUNG_BURST) == CAST_OK)
                     m_uiLungBurstTimer = urand(7000, 12000);
@@ -137,7 +137,7 @@ struct boss_thespiaAI : public ScriptedAI
         // EnvelopingWinds_Timer
         if (m_uiEnvelopingWindsTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_ENVELOPING_WINDS) == CAST_OK)
                     m_uiEnvelopingWindsTimer = m_bIsRegularMode ? 10000 : 15000;
@@ -150,16 +150,14 @@ struct boss_thespiaAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_thespiaAI(Creature* pCreature)
+UnitAI* GetAI_boss_thespiaAI(Creature* pCreature)
 {
     return new boss_thespiaAI(pCreature);
 }
 
 void AddSC_boss_hydromancer_thespia()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_hydromancer_thespia";
     pNewScript->GetAI = &GetAI_boss_thespiaAI;
     pNewScript->RegisterSelf();

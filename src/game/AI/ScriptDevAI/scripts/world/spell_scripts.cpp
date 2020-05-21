@@ -36,7 +36,7 @@ spell 45109
 spell 45111
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 /* When you make a spell effect:
 - always check spell id and effect index
@@ -210,7 +210,7 @@ bool EffectAuraDummy_spell_aura_dummy_npc(const Aura* pAura, bool bApply)
 
             if (!bApply)
             {
-                if (pAura->GetTarget()->GetHealthPercent() <= 35)
+                if (pAura->GetTarget()->HasAuraState(AURA_STATE_HEALTHLESS_35_PERCENT))
                     ((Creature*)pAura->GetTarget())->UpdateEntry(NPC_DRAINED_PHASE_HUNTER);
             }
 
@@ -323,6 +323,7 @@ bool EffectDummyCreature_spell_dummy_npc(Unit* pCaster, uint32 uiSpellId, SpellE
                 pCreatureTarget->RemoveAurasDueToSpell(SPELL_SICKLY_AURA);
                 pCreatureTarget->UpdateEntry(uiUpdateEntry);
                 ((Player*)pCaster)->KilledMonsterCredit(uiUpdateEntry);
+                pCreatureTarget->SetImmuneToPlayer(true);
                 pCreatureTarget->ForcedDespawn(20000);
 
                 return true;
@@ -401,15 +402,7 @@ bool EffectDummyCreature_spell_dummy_npc(Unit* pCaster, uint32 uiSpellId, SpellE
                         pCreatureTarget->SummonCreature(NPC_MINION_OF_GUROK, 0.0f, 0.0f, 0.0f, 0.0f, TEMPSPAWN_CORPSE_DESPAWN, 5000);
                 }
 
-                if (pCreatureTarget->getVictim())
-                {
-                    pCaster->DealDamage(pCreatureTarget, pCreatureTarget->GetMaxHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
-                    return true;
-                }
-
-                // If not in combat, no xp or loot
-                pCreatureTarget->SetDeathState(JUST_DIED);
-                pCreatureTarget->SetHealth(0);
+                pCreatureTarget->CastSpell(nullptr, 3617, TRIGGERED_OLD_TRIGGERED); // suicide spell
                 return true;
             }
             return true;
@@ -452,11 +445,46 @@ bool EffectDummyCreature_spell_dummy_npc(Unit* pCaster, uint32 uiSpellId, SpellE
     return false;
 }
 
+struct SpellStackingRulesOverride : public SpellScript
+{
+    enum : uint32
+    {
+        SPELL_POWER_INFUSION        = 10060,
+        SPELL_ARCANE_POWER          = 12042,
+        SPELL_MISDIRECTION          = 34477,
+    };
+
+    SpellCastResult OnCheckCast(Spell* spell, bool/* strict*/) const override
+    {
+        switch (spell->m_spellInfo->Id)
+        {
+            case SPELL_POWER_INFUSION:
+            {
+                // Patch 1.10.2 (2006-05-02):
+                // Power Infusion: This aura will no longer stack with Arcane Power. If you attempt to cast it on someone with Arcane Power, the spell will fail.
+                if (Unit* target = spell->m_targets.getUnitTarget())
+                    if (target->GetAuraCount(SPELL_ARCANE_POWER))
+                        return SPELL_FAILED_AURA_BOUNCED;
+                break;
+            }
+            case SPELL_MISDIRECTION:
+            {
+                // Patch 2.3.0 (2007-11-13):
+                // Misdirection: If a Hunter attempts to use this ability on a target which already has an active Misdirection, the spell will fail to apply due to a more powerful spell already being in effect.
+                if (Unit* target = spell->m_targets.getUnitTarget())
+                    if (target->HasAura(SPELL_MISDIRECTION))
+                        return SPELL_FAILED_AURA_BOUNCED;
+                break;
+            }
+        }
+
+        return SPELL_CAST_OK;
+    }
+};
+
 void AddSC_spell_scripts()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "spell_dummy_go";
     pNewScript->pEffectDummyGO = &EffectDummyGameObj_spell_dummy_go;
     pNewScript->RegisterSelf();
@@ -466,4 +494,6 @@ void AddSC_spell_scripts()
     pNewScript->pEffectDummyNPC = &EffectDummyCreature_spell_dummy_npc;
     pNewScript->pEffectAuraDummy = &EffectAuraDummy_spell_aura_dummy_npc;
     pNewScript->RegisterSelf();
+
+    RegisterSpellScript<SpellStackingRulesOverride>("spell_stacking_rules_override");
 }

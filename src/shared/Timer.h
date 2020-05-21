@@ -20,6 +20,16 @@
 #define MANGOS_TIMER_H
 
 #include "Common.h"
+#include <chrono>
+
+inline std::chrono::steady_clock::time_point GetApplicationStartTime()
+{
+    using namespace std::chrono;
+
+    static const steady_clock::time_point ApplicationStartTime = steady_clock::now();
+
+    return ApplicationStartTime;
+}
 
 class WorldTimer
 {
@@ -27,6 +37,14 @@ class WorldTimer
 
         // get current server time
         static uint32 getMSTime();
+
+        static inline uint32 getMSTimeDiff(const uint32& oldMSTime, std::chrono::steady_clock::time_point newTime)
+        {
+            using namespace std::chrono;
+
+            uint32 newMSTime = uint32(duration_cast<milliseconds>(newTime - GetApplicationStartTime()).count());
+            return getMSTimeDiff(oldMSTime, newMSTime);
+        }
 
         // get time difference between two timestamps
         static inline uint32 getMSTimeDiff(const uint32& oldMSTime, const uint32& newMSTime)
@@ -44,8 +62,10 @@ class WorldTimer
 
         // get last world tick time
         static uint32 tickTime();
+
         // get previous world tick time
         static uint32 tickPrevTime();
+
         // tick world timer
         static uint32 tick();
 
@@ -125,14 +145,20 @@ struct TimeTracker
 struct ShortTimeTracker
 {
     public:
-        ShortTimeTracker(int32 expiry = 0) : i_expiryTime(expiry) {}
-        void Update(int32 diff) { i_expiryTime -= diff; }
+        ShortTimeTracker(uint32 expiry = 0) : i_expiryTime(expiry) {}
+        void Update(uint32 diff)
+        {
+            if (i_expiryTime <= diff)
+                i_expiryTime = 0;
+            else
+                i_expiryTime -= diff;
+        }
         bool Passed() const { return (i_expiryTime <= 0); }
-        void Reset(int32 interval) { i_expiryTime = interval; }
-        int32 GetExpiry() const { return i_expiryTime; }
+        void Reset(uint32 interval) { i_expiryTime = interval; }
+        uint32 GetExpiry() const { return i_expiryTime; }
 
     private:
-        int32 i_expiryTime;
+        uint32 i_expiryTime;
 };
 
 #endif

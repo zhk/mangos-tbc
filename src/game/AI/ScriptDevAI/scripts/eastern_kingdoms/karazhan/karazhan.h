@@ -36,8 +36,6 @@ enum
     NPC_NIGHTBANE_HELPER            = 17260,
     NPC_NETHERSPITE                 = 15689,
     NPC_ECHO_MEDIVH                 = 16816,
-    NPC_INFERNAL_RELAY              = 17645,                    // helper for the Netherspite infernals for Prince Malchezaar
-    NPC_INFERNAL_TARGET             = 17644,                    // targets for the Netherspite infernals
     NPC_INVISIBLE_STALKER           = 22519,                    // placeholder for dead chess npcs
     NPC_CHESS_STATUS_BAR            = 22520,                    // npc that controlls the transformation of dead pieces
     NPC_CHESS_VICTORY_CONTROLLER    = 22524,
@@ -47,6 +45,7 @@ enum
     NPC_SQUARE_BLACK                = 17305,                    // chess black square
     // NPC_SQUARE_OUTSIDE_BLACK     = 17316,                    // outside chess black square
     // NPC_SQUARE_OUTSIDE_WHITE     = 17317,                    // outside chess white square
+    NPC_VICTORY_DUMMY_TOOL          = 22523,
 
     // Moroes event related
     NPC_LADY_KEIRA_BERRYBUCK        = 17007,
@@ -69,6 +68,16 @@ enum
     // The Master's Terrace quest related
     NPC_IMAGE_OF_MEDIVH             = 17651,
     NPC_IMAGE_OF_ARCANAGOS          = 17652,
+
+    // Aran Teleport npcs
+    NPC_TELEPORT_N                  = 17168,
+    NPC_TELEPORT_S                  = 17169,
+    NPC_TELEPORT_E                  = 17170,
+    NPC_TELEPORT_W                  = 17171,
+    NPC_TELEPORT_NE                 = 17172,
+    NPC_TELEPORT_SE                 = 17173,
+    NPC_TELEPORT_SW                 = 17174,
+    NPC_TELEPORT_NW                 = 17175,
 
     // Chess event
     NPC_ORC_GRUNT                   = 17469,                    // pawn
@@ -98,6 +107,9 @@ enum
     NPC_COLDMIST_STALKER            = 16170,
     NPC_COLDMIST_WIDOW              = 16171,
 
+    //prince malchezaar
+    NPC_INFERNAL_RELAY = 17645,
+
     GO_STAGE_CURTAIN                = 183932,
     GO_STAGE_DOOR_LEFT              = 184278,
     GO_STAGE_DOOR_RIGHT             = 184279,
@@ -107,6 +119,7 @@ enum
     GO_GAMESMANS_HALL_EXIT_DOOR     = 184277,
     GO_NETHERSPACE_DOOR             = 185134,
     GO_SIDE_ENTRANCE_DOOR           = 184275,
+    GO_SERVANTS_ACCESS_DOOR         = 184281,
     GO_DUST_COVERED_CHEST           = 185119,
     GO_MASTERS_TERRACE_DOOR_1       = 184274,
     GO_MASTERS_TERRACE_DOOR_2       = 184280,
@@ -121,12 +134,14 @@ enum
     GO_RAJ_BACKDROP                 = 183443,
     GO_RAJ_MOON                     = 183494,
     GO_RAJ_BALCONY                  = 183495,
+    GO_CHESSBOARD                   = 185324,
 
     // Chess event spells
     SPELL_CLEAR_BOARD               = 37366,                    // spell cast to clear the board at the end of the event
     SPELL_GAME_IN_SESSION           = 39331,                    // debuff on players received while the game is in session
     SPELL_FORCE_KILL_BUNNY          = 45260,                    // triggers 45259
     SPELL_GAME_OVER                 = 39401,                    // cast by Medivh on game end
+    SPELL_BOARD_VISUAL              = 39390,
     SPELL_VICTORY_VISUAL            = 39395,                    // cast by the Victory controller on game end
 
     FACTION_ID_CHESS_HORDE          = 1689,
@@ -135,6 +150,7 @@ enum
     EMOTE_BAT_SPAWN                 = -1532133,
     EMOTE_DOG_SPAWN                 = -1532134,
     EMOTE_SPIDER_SPAWN              = -1532135,
+    EMOTE_SPIDER_SPAWN2             = -1532138,
 };
 
 enum OperaEvents
@@ -147,15 +163,16 @@ enum OperaEvents
 struct BasementSpawns
 {
     uint32 uiEntry;
-    int32 iEmote;
+    int32 emote1;
+    int32 emote2;
     float fX, fY, fZ, fO;
 };
 
 static const BasementSpawns aBasementEnum[MAX_BASEMENT_MINIBOSSES] =
 {
-    {NPC_BAT_MINIBOSS,    EMOTE_BAT_SPAWN,    -10959.11f, -1940.86f, 46.19f, 3.769f},
-    {NPC_DOG_MINIBOSS,    EMOTE_DOG_SPAWN,    -10900.01f, -2085.47f, 49.55f, 1.343f},
-    {NPC_SPIDER_MINIBOSS, EMOTE_SPIDER_SPAWN, -10939.75f, -2041.11f, 49.55f, 1.361f},
+    {NPC_BAT_MINIBOSS,    EMOTE_BAT_SPAWN, 0,   -10959.11f, -1940.86f, 46.19f, 3.769f},
+    {NPC_DOG_MINIBOSS,    EMOTE_DOG_SPAWN, 0,   -10900.01f, -2085.47f, 49.55f, 1.343f},
+    {NPC_SPIDER_MINIBOSS, EMOTE_SPIDER_SPAWN, EMOTE_SPIDER_SPAWN2, -10939.75f, -2041.11f, 49.55f, 1.361f},
 };
 
 struct OperaSpawns
@@ -190,29 +207,33 @@ class instance_karazhan : public ScriptedInstance
         void OnCreatureCreate(Creature* pCreature) override;
         void OnObjectCreate(GameObject* pGo) override;
 
+        void OnCreatureEvade(Creature* creature) override;
         void OnCreatureDeath(Creature* pCreature) override;
 
         void SetData(uint32 uiType, uint32 uiData) override;
         uint32 GetData(uint32 uiType) const override;
 
-        void SetData64(uint32 uiType, uint64 uiGuid) override;
+        void SetData64(uint32 uiData, uint64 uiGuid) override;
 
         void DoPrepareOperaStage(Creature* pOrganizer);
 
-        uint32 GetPlayerTeam() { return m_uiTeam; }
-        bool IsFriendlyGameReady() { return m_bFriendlyGame; }
+        uint32 GetPlayerTeam() const { return m_uiTeam; }
+        bool IsFriendlyGameReady() const { return m_bFriendlyGame; }
         void DoMoveChessPieceToSides(uint32 uiSpellId, uint32 uiFaction, bool bGameEnd = false);
+        void DoFailChessEvent();
+        void DoFinishChessEvent();
         void GetChessPiecesByFaction(GuidList& lList, uint32 uiFaction) { lList = uiFaction == FACTION_ID_CHESS_ALLIANCE ? m_lChessPiecesAlliance : m_lChessPiecesHorde; }
 
-        void GetNightbaneTriggers(GuidList& lList, bool bGround) { lList = bGround ? m_lNightbaneGroundTriggers : m_lNightbaneAirTriggers; }
+        GuidVector& GetAranTeleportNPCs() { return m_aranTeleportNPCs; }
 
-        ObjectGuid GetRelayGuid(bool bLower) { return bLower ? m_LowerRelayGuid : m_HigherRelayGuid; }
-        void GetInfernalTargetsList(GuidList& lList) { lList = m_lInfernalTargetsGuidList; }
+        void GetNightbaneTriggers(GuidList& lList, bool bGround) { lList = bGround ? m_lNightbaneGroundTriggers : m_lNightbaneAirTriggers; }
 
         void Load(const char* chrIn) override;
         const char* Save() const override { return m_strInstData.c_str(); }
 
-        void Update(uint32 uiDiff) override;
+        void Update(const uint32 diff) override;
+
+        GuidVector m_vInfernalRelays;
 
     private:
         void DoPrepareChessEvent();
@@ -224,18 +245,19 @@ class instance_karazhan : public ScriptedInstance
         uint32 m_uiOzDeathCount;
         uint32 m_uiTeam;                                    // Team of first entered player, used for the Chess event
         uint32 m_uiChessResetTimer;
+        uint32 m_uiChessEndingTimer;
+        uint32 m_uiVictoryControllerTimer;
+        uint32 m_uiVictoryToolTimers[8];
 
         uint8 m_uiAllianceStalkerCount;
         uint8 m_uiHordeStalkerCount;
 
         bool m_bFriendlyGame;
         bool m_bBasementBossReady;
+        bool m_uiVictoryTimersPhase[8];
 
         ObjectGuid m_HordeStatusGuid;
         ObjectGuid m_AllianceStatusGuid;
-
-        ObjectGuid m_LowerRelayGuid;
-        ObjectGuid m_HigherRelayGuid;
 
         GuidList m_lOperaTreeGuidList;
         GuidList m_lOperaHayGuidList;
@@ -249,8 +271,9 @@ class instance_karazhan : public ScriptedInstance
         GuidList m_lChessPiecesHorde;
         GuidVector m_vHordeStalkers;
         GuidVector m_vAllianceStalkers;
-
-        GuidList m_lInfernalTargetsGuidList;
+        GuidVector m_vVictoryDummyTools;
+        GuidVector m_vChessSquares;
+        GuidVector m_aranTeleportNPCs;
 };
 
 #endif

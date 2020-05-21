@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Magister's Terrace
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "magisters_terrace.h"
 
 /*
@@ -112,7 +112,7 @@ void instance_magisters_terrace::OnCreatureDeath(Creature* pCreature)
             // yell on summoned death
             if (Creature* pDelrissa = GetSingleCreatureFromStorage(NPC_DELRISSA))
             {
-                if (pDelrissa->isAlive())
+                if (pDelrissa->IsAlive())
                     DoScriptText(aDelrissaAddDeath[m_uiDelrissaDeathCount - 1], pDelrissa);
                 else if (GetData(TYPE_DELRISSA) == SPECIAL)
                 {
@@ -141,8 +141,18 @@ void instance_magisters_terrace::SetData(uint32 uiType, uint32 uiData)
                         if (!pTemp->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
                             pTemp->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
 
-                        if (pTemp->isAlive())
-                            pTemp->AI()->EnterEvadeMode();
+                        if (pTemp->IsAlive())
+                        {
+                            if (pTemp->IsInCombat())
+                            {
+                                pTemp->ForcedDespawn();
+                                pTemp->Respawn();
+                            }
+                            else
+                                pTemp->CastSpell(nullptr, SPELL_FEL_CRYSTAL_VISUAL, TRIGGERED_NONE);
+                        }
+                        else
+                            pTemp->Respawn();
                     }
                 }
             }
@@ -192,6 +202,16 @@ void instance_magisters_terrace::SetData(uint32 uiType, uint32 uiData)
     }
 }
 
+void instance_magisters_terrace::StartCrystalVisual()
+{
+    for (GuidList::const_iterator itr = m_lFelCrystalGuid.begin(); itr != m_lFelCrystalGuid.end(); ++itr)
+    {
+        if (Creature* pTemp = instance->GetCreature(*itr))
+            if (pTemp->IsAlive())
+                pTemp->CastSpell(nullptr, SPELL_FEL_CRYSTAL_VISUAL, TRIGGERED_NONE);
+    }
+}
+
 void instance_magisters_terrace::Load(const char* chrIn)
 {
     if (!chrIn)
@@ -205,10 +225,10 @@ void instance_magisters_terrace::Load(const char* chrIn)
     std::istringstream loadStream(chrIn);
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -229,9 +249,7 @@ InstanceData* GetInstanceData_instance_magisters_terrace(Map* pMap)
 
 void AddSC_instance_magisters_terrace()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_magisters_terrace";
     pNewScript->GetInstanceData = &GetInstanceData_instance_magisters_terrace;
     pNewScript->RegisterSelf();

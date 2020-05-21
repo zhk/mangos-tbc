@@ -25,7 +25,7 @@ EndScriptData */
 quest_willix_the_importer
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "AI/ScriptDevAI/base/pet_ai.h"
 
@@ -122,14 +122,14 @@ struct npc_willix_the_importerAI : public npc_escortAI
                 m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
                 // Complete event
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_WILLIX_THE_IMPORTER, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_WILLIX_THE_IMPORTER, m_creature);
                 SetEscortPaused(true);
                 break;
         }
     }
 };
 
-CreatureAI* GetAI_npc_willix_the_importer(Creature* pCreature)
+UnitAI* GetAI_npc_willix_the_importer(Creature* pCreature)
 {
     return new npc_willix_the_importerAI(pCreature);
 }
@@ -193,7 +193,7 @@ struct npc_snufflenose_gopherAI : public ScriptedPetAI
     // Function to search for new tubber in range
     void DoFindNewTubber()
     {
-        std::list<GameObject*> lTubbersInRange;
+        GameObjectList lTubbersInRange;
         GetGameObjectListWithEntryInGrid(lTubbersInRange, m_creature, GO_BLUELEAF_TUBBER, 40.0f);
 
         if (lTubbersInRange.empty())
@@ -203,9 +203,9 @@ struct npc_snufflenose_gopherAI : public ScriptedPetAI
         GameObject* pNearestTubber = nullptr;
 
         // Always need to find new ones
-        for (std::list<GameObject*>::const_iterator itr = lTubbersInRange.begin(); itr != lTubbersInRange.end(); ++itr)
+        for (GameObjectList::const_iterator itr = lTubbersInRange.begin(); itr != lTubbersInRange.end(); ++itr)
         {
-            if (!(*itr)->isSpawned() && (*itr)->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) && (*itr)->IsWithinLOSInMap(m_creature))
+            if (!(*itr)->IsSpawned() && (*itr)->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) && (*itr)->IsWithinLOSInMap(m_creature))
             {
                 pNearestTubber = *itr;
                 break;
@@ -229,12 +229,12 @@ struct npc_snufflenose_gopherAI : public ScriptedPetAI
     }
 };
 
-CreatureAI* GetAI_npc_snufflenose_gopher(Creature* pCreature)
+UnitAI* GetAI_npc_snufflenose_gopher(Creature* pCreature)
 {
     return new npc_snufflenose_gopherAI(pCreature);
 }
 
-bool EffectDummyCreature_npc_snufflenose_gopher(Unit* pCaster, uint32 uiSpellId, SpellEffectIndex uiEffIndex, Creature* pCreatureTarget, ObjectGuid /*originalCasterGuid*/)
+bool EffectDummyCreature_npc_snufflenose_gopher(Unit* /*pCaster*/, uint32 uiSpellId, SpellEffectIndex uiEffIndex, Creature* pCreatureTarget, ObjectGuid /*originalCasterGuid*/)
 {
     // always check spellid and effectindex
     if (uiSpellId == SPELL_SNUFFLENOSE_COMMAND && uiEffIndex == EFFECT_INDEX_0)
@@ -254,9 +254,7 @@ bool EffectDummyCreature_npc_snufflenose_gopher(Unit* pCaster, uint32 uiSpellId,
 
 void AddSC_razorfen_kraul()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_willix_the_importer";
     pNewScript->GetAI = &GetAI_npc_willix_the_importer;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_willix_the_importer;

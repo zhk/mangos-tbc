@@ -25,7 +25,7 @@ EndScriptData */
 npc_dorius_stonetender
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -54,13 +54,13 @@ struct npc_dorius_stonetenderAI : public npc_escortAI
         DoScriptText(urand(0, 1) ? SAY_DORIUS_AGGRO_1 : SAY_DORIUS_AGGRO_2, m_creature, pWho);
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
             // ToDo: research if there is any text here
             m_creature->SetStandState(UNIT_STAND_STATE_STAND);
-            m_creature->SetFactionTemporary(FACTION_ESCORT_A_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            m_creature->SetFactionTemporary(FACTION_ESCORT_A_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
             Start(false, (Player*)pInvoker, GetQuestTemplateStore(uiMiscValue), true);
         }
     }
@@ -81,7 +81,7 @@ struct npc_dorius_stonetenderAI : public npc_escortAI
             case 33:
                 // ToDo: research if there is any event and text here!
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_ID_SUNTARA_STONES, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_SUNTARA_STONES, m_creature);
                 m_creature->SetStandState(UNIT_STAND_STATE_DEAD);
                 break;
         }
@@ -93,16 +93,16 @@ struct npc_dorius_stonetenderAI : public npc_escortAI
             pSummoned->AI()->AttackStart(m_creature);
     }
 
-    void UpdateEscortAI(const uint32 uiDiff) override
+    void UpdateEscortAI(const uint32 /*uiDiff*/) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_npc_dorius_stonetender(Creature* pCreature)
+UnitAI* GetAI_npc_dorius_stonetender(Creature* pCreature)
 {
     return new npc_dorius_stonetenderAI(pCreature);
 }
@@ -120,9 +120,7 @@ bool QuestAccept_npc_dorius_stonetender(Player* pPlayer, Creature* pCreature, co
 
 void AddSC_searing_gorge()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_dorius_stonetender";
     pNewScript->GetAI = &GetAI_npc_dorius_stonetender;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_dorius_stonetender;

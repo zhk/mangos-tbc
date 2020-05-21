@@ -21,7 +21,7 @@ SDComment: Missing vipers emerge effect, Naralex doesn't fly at exit(Core issue)
 SDCategory: Wailing Caverns
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "wailing_caverns.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
@@ -148,10 +148,9 @@ struct npc_disciple_of_naralexAI : public npc_escortAI
         if (m_uiPoint == 15 || m_uiPoint == 32)
         {
             m_creature->SetLootRecipient(nullptr);
-            m_creature->DeleteThreatList();
             m_creature->CombatStop(false);
 
-            if (m_creature->isAlive())
+            if (m_creature->IsAlive())
                 m_creature->GetMotionMaster()->MovementExpired(true);
 
             Reset();
@@ -427,7 +426,7 @@ struct npc_disciple_of_naralexAI : public npc_escortAI
         else
             m_uiPotionTimer -= uiDiff;
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiSleepTimer < uiDiff)
@@ -485,16 +484,14 @@ bool GossipSelect_npc_disciple_of_naralex(Player* pPlayer, Creature* pCreature, 
     return true;
 }
 
-CreatureAI* GetAI_npc_disciple_of_naralex(Creature* pCreature)
+UnitAI* GetAI_npc_disciple_of_naralex(Creature* pCreature)
 {
     return new npc_disciple_of_naralexAI(pCreature);
 }
 
 void AddSC_wailing_caverns()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_disciple_of_naralex";
     pNewScript->GetAI = &GetAI_npc_disciple_of_naralex;
     pNewScript->pGossipHello =  &GossipHello_npc_disciple_of_naralex;

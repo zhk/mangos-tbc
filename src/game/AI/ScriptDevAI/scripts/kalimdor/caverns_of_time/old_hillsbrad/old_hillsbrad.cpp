@@ -27,7 +27,7 @@ npc_thrall_old_hillsbrad
 npc_taretha
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "old_hillsbrad.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
@@ -700,10 +700,7 @@ struct npc_thrall_old_hillsbradAI : public npc_escortAI, private DialogueHelper
                 break;
             case 9:
                 DoScriptText(SAY_TH_KILL_ARMORER, m_creature);
-                DoCastSpellIfCan(m_creature, SPELL_KNOCKOUT_ARMORER);
-                // also kill the armorer
-                if (Creature* pArmorer = m_pInstance->GetSingleCreatureFromStorage(NPC_ARMORER))
-                    pArmorer->DealDamage(pArmorer, pArmorer->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NONE, nullptr, false);
+                DoCastSpellIfCan(nullptr, SPELL_KNOCKOUT_ARMORER);
                 break;
             case 10:
                 DoScriptText(SAY_TH_ARMORY_1, m_creature);
@@ -933,9 +930,9 @@ struct npc_thrall_old_hillsbradAI : public npc_escortAI, private DialogueHelper
 
         if (!lPlayerList.isEmpty())
         {
-            for (Map::PlayerList::const_iterator itr = lPlayerList.begin(); itr != lPlayerList.end(); ++itr)
+            for (const auto& itr : lPlayerList)
             {
-                if (Player* pPlayer = itr->getSource())
+                if (Player* pPlayer = itr.getSource())
                     pPlayer->KilledMonsterCredit(NPC_THRALL_QUEST_TRIGGER, m_creature->GetObjectGuid());
             }
         }
@@ -950,12 +947,12 @@ struct npc_thrall_old_hillsbradAI : public npc_escortAI, private DialogueHelper
     {
         DialogueUpdate(uiDiff);
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiStrikeTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_STRIKE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_STRIKE) == CAST_OK)
                 m_uiStrikeTimer = urand(4000, 7000);
         }
         else
@@ -979,7 +976,7 @@ struct npc_thrall_old_hillsbradAI : public npc_escortAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_npc_thrall_old_hillsbrad(Creature* pCreature)
+UnitAI* GetAI_npc_thrall_old_hillsbrad(Creature* pCreature)
 {
     return new npc_thrall_old_hillsbradAI(pCreature);
 }
@@ -1249,7 +1246,7 @@ struct npc_tarethaAI : public npc_escortAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_npc_taretha(Creature* pCreature)
+UnitAI* GetAI_npc_taretha(Creature* pCreature)
 {
     return new npc_tarethaAI(pCreature);
 }
@@ -1298,9 +1295,7 @@ bool GossipSelect_npc_taretha(Player* pPlayer, Creature* pCreature, uint32 /*uiS
 
 void AddSC_old_hillsbrad()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_erozion";
     pNewScript->pGossipHello = &GossipHello_npc_erozion;
     pNewScript->pGossipSelect = &GossipSelect_npc_erozion;

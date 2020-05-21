@@ -21,7 +21,7 @@ SDComment: Bellowing Roar Timer (heroic) needs some love
 SDCategory: Hellfire Citadel, Hellfire Ramparts
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "hellfire_ramparts.h"
 
 enum
@@ -36,30 +36,36 @@ enum
     SAY_DEATH               = -1543024,
     EMOTE_DESCEND           = -1543025,
 
-    SPELL_SUMMON_VAZRUDEN   = 30717,
-
     // vazruden
-    SPELL_REVENGE           = 19130,
-    SPELL_REVENGE_H         = 40392,
+    SPELL_REVENGE = 19130,
+    SPELL_REVENGE_H = 40392,
+    SPELL_VAZRUDENS_MARK = 30689,                        // Unused - seemingly non-tank targeted
+    SPELL_DEFENSIVE_STATE = 5301,
 
     // nazan
-    //SPELL_FIREBALL_H      = 32491,                        // purpose unk; not sure if they are related to this encounter
-    //SPELL_FIREBALL_B_H    = 33794,
-    SPELL_FIREBALL          = 34653,
-    SPELL_FIREBALL_H        = 36920,
-    //SPELL_FIREBALL_LAND   = 30691,                        // cast while on land?
-    //SPELL_FIREBALL_LAND_H = 33793,
-    SPELL_CONE_OF_FIRE      = 30926,
-    SPELL_CONE_OF_FIRE_H    = 36921,
+    SPELL_FACE_HIGHEST_THREAT = 30700,                    // normal+heroic flight
+    SPELL_SUMMON_VAZRUDEN = 30717,                  // normal+heroic DoSplit();
 
-    SPELL_BELLOW_ROAR_H     = 39427,
+    SPELL_FIREBALL_HIGHEST_THREAT = 30691,                  // cast 2-3 times afer 30700, normal flight
+    SPELL_FIREBALL_HIGHEST_THREAT_H = 32491,                  // cast 2-3 times afer 30700 heroic flight
+
+    SPELL_FIREBALL_RANDOM = 33793,                  // normal flight inbetween 30691
+    SPELL_FIREBALL_RANDOM_H = 33794,                  // heroic flight inbetween 32491
+
+    SPELL_FIREBALL_GROUND = 34653,                    // normal ground
+    SPELL_FIREBALL_GROUND_H = 36920,                    // heroic ground
+
+    SPELL_CONE_OF_FIRE = 30926,                    // normal ground
+    SPELL_CONE_OF_FIRE_H = 36921,                    // heroic ground
+
+    SPELL_BELLOW_ROAR_H = 39427,                    // heroic ground
 
     // misc
-    POINT_ID_CENTER         = 100,
-    POINT_ID_FLYING         = 101,
-    POINT_ID_COMBAT         = 102,
+    POINT_ID_CENTER = 100,
+    POINT_ID_FLYING = 101,
+    POINT_ID_COMBAT = 102,
 
-    NPC_NAZAN               = 17536,
+    NPC_NAZAN = 17536,
 };
 
 const float afCenterPos[3] = { -1399.401f, 1736.365f, 87.008f}; // moves here to drop off nazan
@@ -67,7 +73,6 @@ const float afCombatPos[3] = { -1413.848f, 1754.019f, 83.146f}; // moves here wh
 
 // This is the flying mob ("mounted" on dragon) spawned initially
 // This npc will morph into the "unmounted" dragon (nazan) after vazruden is summoned and continue flying
-// Descent after Vazruden reach 30% HP
 struct boss_vazruden_heraldAI : public ScriptedAI
 {
     boss_vazruden_heraldAI(Creature* pCreature) : ScriptedAI(pCreature)
@@ -115,7 +120,7 @@ struct boss_vazruden_heraldAI : public ScriptedAI
 
     void MoveInLineOfSight(Unit* pWho) override
     {
-        if (m_bIsEventInProgress && !m_lastSeenPlayerGuid && pWho->GetTypeId() == TYPEID_PLAYER && pWho->isAlive() && !((Player*)pWho)->isGameMaster())
+        if (m_bIsEventInProgress && !m_lastSeenPlayerGuid && pWho->GetTypeId() == TYPEID_PLAYER && pWho->IsAlive() && !((Player*)pWho)->isGameMaster())
         {
             if (m_creature->IsWithinDistInMap(pWho, 40.0f))
                 m_lastSeenPlayerGuid = pWho->GetObjectGuid();
@@ -169,10 +174,7 @@ struct boss_vazruden_heraldAI : public ScriptedAI
                     // undo flying
                     m_creature->SetByteValue(UNIT_FIELD_BYTES_1, 3, 0);
                     m_creature->SetLevitate(false);
-
-                    Player* pPlayer = m_creature->GetMap()->GetPlayer(m_lastSeenPlayerGuid);
-                    if (pPlayer && pPlayer->isAlive())
-                        AttackStart(pPlayer);
+                    m_creature->SetInCombatWithZone();
 
                     // Initialize for combat
                     m_uiFireballTimer = urand(5200, 16500);
@@ -219,7 +221,7 @@ struct boss_vazruden_heraldAI : public ScriptedAI
 
     void DoMoveToCombat()
     {
-        if (m_bIsDescending || !m_pInstance || m_pInstance->GetData(TYPE_NAZAN) == IN_PROGRESS)
+        if (m_bIsDescending || !m_pInstance || m_pInstance->GetData(TYPE_NAZAN) == NOT_STARTED)
             return;
 
         m_bIsDescending = true;
@@ -234,8 +236,7 @@ struct boss_vazruden_heraldAI : public ScriptedAI
         if (pSummoned->GetEntry() != NPC_VAZRUDEN)
             return;
 
-        if (Player* pPlayer = m_creature->GetMap()->GetPlayer(m_lastSeenPlayerGuid))
-            pSummoned->AI()->AttackStart(pPlayer);
+        pSummoned->SetInCombatWithZone();
 
         m_vazrudenGuid = pSummoned->GetObjectGuid();
 
@@ -257,7 +258,7 @@ struct boss_vazruden_heraldAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         {
             if (m_uiMovementTimer)
             {
@@ -282,9 +283,9 @@ struct boss_vazruden_heraldAI : public ScriptedAI
                 {
                     if (Creature* pVazruden = m_creature->GetMap()->GetCreature(m_vazrudenGuid))
                     {
-                        if (Unit* pEnemy = pVazruden->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+                        if (Unit* pEnemy = pVazruden->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
                         {
-                            if (DoCastSpellIfCan(pEnemy, m_bIsRegularMode ? SPELL_FIREBALL : SPELL_FIREBALL_H, 0, pVazruden->GetObjectGuid()) == CAST_OK)
+                            if (DoCastSpellIfCan(pEnemy, m_bIsRegularMode ? SPELL_FIREBALL_GROUND : SPELL_FIREBALL_GROUND_H) == CAST_OK)
                                 m_uiFireballTimer = urand(2100, 7300);
                         }
                     }
@@ -302,9 +303,9 @@ struct boss_vazruden_heraldAI : public ScriptedAI
         // In Combat
         if (m_uiFireballTimer < uiDiff)
         {
-            if (Unit* pEnemy = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pEnemy = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
-                if (DoCastSpellIfCan(pEnemy, m_bIsRegularMode ? SPELL_FIREBALL : SPELL_FIREBALL_H) == CAST_OK)
+                if (DoCastSpellIfCan(pEnemy, m_bIsRegularMode ? SPELL_FIREBALL_GROUND : SPELL_FIREBALL_GROUND_H) == CAST_OK)
                     m_uiFireballTimer = urand(7300, 13200);
             }
         }
@@ -313,7 +314,7 @@ struct boss_vazruden_heraldAI : public ScriptedAI
 
         if (m_uiConeOfFireTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), m_bIsRegularMode ? SPELL_CONE_OF_FIRE : SPELL_CONE_OF_FIRE_H) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_CONE_OF_FIRE : SPELL_CONE_OF_FIRE_H) == CAST_OK)
                 m_uiConeOfFireTimer = urand(7300, 13200);
         }
         else
@@ -331,10 +332,22 @@ struct boss_vazruden_heraldAI : public ScriptedAI
         }
 
         DoMeleeAttackIfReady();
+
+        if (EnterEvadeIfOutOfCombatArea(uiDiff))
+        {
+            if (m_vazrudenGuid)
+            {
+                if (Creature* pVazruden = m_creature->GetMap()->GetCreature(m_vazrudenGuid))
+                {
+                    DoScriptText(SAY_TAUNT, pVazruden);
+                    pVazruden->AI()->EnterEvadeMode();
+                }
+            }
+        }
     }
 };
 
-CreatureAI* GetAI_boss_vazruden_herald(Creature* pCreature)
+UnitAI* GetAI_boss_vazruden_herald(Creature* pCreature)
 {
     return new boss_vazruden_heraldAI(pCreature);
 }
@@ -347,6 +360,8 @@ struct boss_vazrudenAI : public ScriptedAI
         m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
         m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
         Reset();
+
+        DoCastSpellIfCan(m_creature, SPELL_DEFENSIVE_STATE, CAST_TRIGGERED | CAST_AURA_NOT_PRESENT);
     }
 
     ScriptedInstance* m_pInstance;
@@ -390,9 +405,9 @@ struct boss_vazrudenAI : public ScriptedAI
         DoScriptText(urand(0, 1) ? SAY_KILL1 : SAY_KILL2, m_creature);
     }
 
-    void DamageTaken(Unit* /*pDealer*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDealer*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (!m_bHealthBelow && m_pInstance && (float(m_creature->GetHealth() - uiDamage) / m_creature->GetMaxHealth()) < 0.30f)
+        if (!m_bHealthBelow && m_pInstance && (float(m_creature->GetHealth() - damage) / m_creature->GetMaxHealth()) < 0.40f)
         {
             if (Creature* pNazan = m_pInstance->GetSingleCreatureFromStorage(NPC_VAZRUDEN_HERALD))
                 if (boss_vazruden_heraldAI* pNazanAI = dynamic_cast<boss_vazruden_heraldAI*>(pNazan->AI()))
@@ -404,31 +419,36 @@ struct boss_vazrudenAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiRevengeTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), m_bIsRegularMode ? SPELL_REVENGE : SPELL_REVENGE_H) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_REVENGE : SPELL_REVENGE_H) == CAST_OK)
                 m_uiRevengeTimer = urand(11400, 14300);
         }
         else
             m_uiRevengeTimer -= uiDiff;
 
         DoMeleeAttackIfReady();
+
+        if (EnterEvadeIfOutOfCombatArea(uiDiff))
+        {
+            DoScriptText(SAY_TAUNT, m_creature);
+            if (Creature* pNazan = m_pInstance->GetSingleCreatureFromStorage(NPC_VAZRUDEN_HERALD))
+                pNazan->AI()->EnterEvadeMode();
+        }
     }
 };
 
-CreatureAI* GetAI_boss_vazruden(Creature* pCreature)
+UnitAI* GetAI_boss_vazruden(Creature* pCreature)
 {
     return new boss_vazrudenAI(pCreature);
 }
 
 void AddSC_boss_nazan_and_vazruden()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_vazruden";
     pNewScript->GetAI = &GetAI_boss_vazruden;
     pNewScript->RegisterSelf();

@@ -21,7 +21,7 @@ SDComment: Show a codebox in gossip option
 SDCategory: Script Examples
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include <cstring>
 
 enum
@@ -89,9 +89,7 @@ bool GossipSelectWithCode_example_gossip_codebox(Player* pPlayer, Creature* pCre
 
 void AddSC_example_gossip_codebox()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "example_gossip_codebox";
     pNewScript->pGossipHello = &GossipHello_example_gossip_codebox;
     pNewScript->pGossipSelect = &GossipSelect_example_gossip_codebox;

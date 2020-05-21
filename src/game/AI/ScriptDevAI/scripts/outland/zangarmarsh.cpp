@@ -28,8 +28,9 @@ event_stormcrow
 npc_fhwoor
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
+#include "Maps/MapManager.h"
 
 /*######
 ## npc_cooshcoosh
@@ -61,12 +62,12 @@ struct npc_cooshcooshAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiLightningBolt_Timer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_LIGHTNING_BOLT);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_LIGHTNING_BOLT);
             m_uiLightningBolt_Timer = 5000;
         }
         else m_uiLightningBolt_Timer -= uiDiff;
@@ -75,7 +76,7 @@ struct npc_cooshcooshAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_cooshcoosh(Creature* pCreature)
+UnitAI* GetAI_npc_cooshcoosh(Creature* pCreature)
 {
     return new npc_cooshcooshAI(pCreature);
 }
@@ -143,7 +144,7 @@ struct npc_kayra_longmaneAI : public npc_escortAI
                 break;
             case 26:
                 DoScriptText(SAY_END, m_creature, pPlayer);
-                pPlayer->GroupEventHappens(QUEST_ESCAPE_FROM, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ESCAPE_FROM, m_creature);
                 m_creature->ForcedDespawn(10000);
                 break;
         }
@@ -165,7 +166,7 @@ bool QuestAccept_npc_kayra_longmane(Player* pPlayer, Creature* pCreature, const 
     return true;
 }
 
-CreatureAI* GetAI_npc_kayra_longmane(Creature* pCreature)
+UnitAI* GetAI_npc_kayra_longmane(Creature* pCreature)
 {
     return new npc_kayra_longmaneAI(pCreature);
 }
@@ -232,7 +233,7 @@ struct npc_fhwoorAI : public npc_escortAI
         m_bIsAmbush = false;
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
@@ -299,14 +300,14 @@ struct npc_fhwoorAI : public npc_escortAI
             case 93:
                 DoScriptText(SAY_ESCORT_COMPLETE, m_creature);
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_ID_FHWOOR_SMASH, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_FHWOOR_SMASH, m_creature);
                 break;
         }
     }
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiStompTimer < uiDiff)
@@ -329,7 +330,7 @@ struct npc_fhwoorAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_fhwoor(Creature* pCreature)
+UnitAI* GetAI_npc_fhwoor(Creature* pCreature)
 {
     return new npc_fhwoorAI(pCreature);
 }
@@ -345,11 +346,86 @@ bool QuestAccept_npc_fhwoor(Player* pPlayer, Creature* pCreature, const Quest* p
     return false;
 }
 
+/*######
+## npc_frostbite
+######*/
+
+enum
+{
+    SPELL_FROSTBITE_ROTATE = 34748,
+    SPELL_PERIODIC_TRIGGER_DUMMY = 30023,
+    SPELL_FROST_RING_FRONT = 34740,
+    SPELL_FROST_RING_BEHIND = 34746,
+    SPELL_FREEZING_CIRCLE = 34779
+};
+
+struct npc_frostbiteAI : public ScriptedAI
+{
+    npc_frostbiteAI(Creature* creature) : ScriptedAI(creature)
+    {
+        Reset();
+        tick = 0;
+    }
+
+    uint8 tick;
+
+    void Reset() override
+    {
+        m_creature->CastSpell(m_creature, SPELL_FROSTBITE_ROTATE, TRIGGERED_NONE);
+    }
+    
+    void SpellHit(Unit* caster, const SpellEntry* spell) override
+    {
+        if (caster != m_creature)
+            return;
+
+        if (spell->Id != SPELL_PERIODIC_TRIGGER_DUMMY)
+            return;
+
+        switch (tick)
+        {
+            case 0:
+            case 1:
+            case 2:
+            {
+                float newAngle = m_creature->GetOrientation();
+
+                newAngle += M_PI_F / 3;
+
+                newAngle = MapManager::NormalizeOrientation(newAngle);
+
+                m_creature->SetFacingTo(newAngle);
+                m_creature->SetOrientation(newAngle);
+
+                m_creature->CastSpell(m_creature, SPELL_FROST_RING_FRONT, TRIGGERED_NONE);
+                m_creature->CastSpell(m_creature, SPELL_FROST_RING_BEHIND, TRIGGERED_NONE);
+
+                tick++;
+                break;
+            }
+            case 3:
+                m_creature->CastSpell(m_creature, SPELL_FREEZING_CIRCLE, TRIGGERED_NONE);
+                tick++;
+                break;
+            default:
+                m_creature->ForcedDespawn();
+                break;
+        }
+    }
+
+    void UpdateAI(const uint32 /*diff*/) override
+    {
+    }
+};
+
+UnitAI* GetAI_npc_frostbite(Creature* creature)
+{
+    return new npc_frostbiteAI(creature);
+}
+
 void AddSC_zangarmarsh()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_cooshcoosh";
     pNewScript->GetAI = &GetAI_npc_cooshcoosh;
     pNewScript->RegisterSelf();
@@ -369,5 +445,10 @@ void AddSC_zangarmarsh()
     pNewScript->Name = "npc_fhwoor";
     pNewScript->GetAI = &GetAI_npc_fhwoor;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_fhwoor;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "npc_frostbite";
+    pNewScript->GetAI = &GetAI_npc_frostbite;
     pNewScript->RegisterSelf();
 }

@@ -29,7 +29,7 @@ npc_captured_arkonarin
 npc_arei
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/follower_ai.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "Globals/ObjectMgr.h"
@@ -78,7 +78,7 @@ struct npc_kittenAI : public FollowerAI
     void MoveInLineOfSight(Unit* pWho) override
     {
         // should not have npcflag by default, so set when expected
-        if (!m_creature->getVictim() && !m_creature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP) && HasFollowState(STATE_FOLLOW_INPROGRESS) && pWho->GetEntry() == NPC_WINNA)
+        if (!m_creature->GetVictim() && !m_creature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP) && HasFollowState(STATE_FOLLOW_INPROGRESS) && pWho->GetEntry() == NPC_WINNA)
         {
             if (m_creature->IsWithinDistInMap(pWho, INTERACTION_DISTANCE))
                 m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
@@ -87,7 +87,7 @@ struct npc_kittenAI : public FollowerAI
 
     void UpdateFollowerAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         {
             if (HasFollowState(STATE_FOLLOW_PAUSED))
             {
@@ -107,7 +107,7 @@ struct npc_kittenAI : public FollowerAI
     }
 };
 
-CreatureAI* GetAI_npc_kitten(Creature* pCreature)
+UnitAI* GetAI_npc_kitten(Creature* pCreature)
 {
     return new npc_kittenAI(pCreature);
 }
@@ -260,7 +260,7 @@ struct npc_niby_the_almightyAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_niby_the_almighty(Creature* pCreature)
+UnitAI* GetAI_npc_niby_the_almighty(Creature* pCreature)
 {
     return new npc_niby_the_almightyAI(pCreature);
 }
@@ -365,12 +365,12 @@ struct npc_kroshiusAI : public ScriptedAI
         }
         else
         {
-            if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+            if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
                 return;
 
             if (m_uiKnockBackTimer < uiDiff)
             {
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_KNOCKBACK);
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_KNOCKBACK);
                 m_uiKnockBackTimer = urand(9000, 12000);
             }
             else
@@ -381,7 +381,7 @@ struct npc_kroshiusAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_kroshius(Creature* pCreature)
+UnitAI* GetAI_npc_kroshius(Creature* pCreature)
 {
     return new npc_kroshiusAI(pCreature);
 }
@@ -473,7 +473,7 @@ struct npc_captured_arkonarinAI : public npc_escortAI
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
@@ -545,7 +545,7 @@ struct npc_captured_arkonarinAI : public npc_escortAI
                 break;
             case 109:
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_ID_RESCUE_JAEDENAR, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_RESCUE_JAEDENAR, m_creature);
                 SetRun();
                 break;
         }
@@ -553,14 +553,14 @@ struct npc_captured_arkonarinAI : public npc_escortAI
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_bCanAttack)
         {
             if (m_uiMortalStrikeTimer < uiDiff)
             {
-                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_MORTAL_STRIKE) == CAST_OK)
+                if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_MORTAL_STRIKE) == CAST_OK)
                     m_uiMortalStrikeTimer = urand(7000, 10000);
             }
             else
@@ -568,7 +568,7 @@ struct npc_captured_arkonarinAI : public npc_escortAI
 
             if (m_uiCleaveTimer < uiDiff)
             {
-                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE) == CAST_OK)
+                if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CLEAVE) == CAST_OK)
                     m_uiCleaveTimer = urand(3000, 6000);
             }
             else
@@ -579,7 +579,7 @@ struct npc_captured_arkonarinAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_captured_arkonarin(Creature* pCreature)
+UnitAI* GetAI_npc_captured_arkonarin(Creature* pCreature)
 {
     return new npc_captured_arkonarinAI(pCreature);
 }
@@ -690,7 +690,7 @@ struct npc_areiAI : public npc_escortAI, private DialogueHelper
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
@@ -738,7 +738,7 @@ struct npc_areiAI : public npc_escortAI, private DialogueHelper
                 if (Player* pPlayer = GetPlayerForEscort())
                 {
                     DoScriptText(SAY_AREI_ESCORT_COMPLETE, m_creature, pPlayer);
-                    pPlayer->GroupEventHappens(QUEST_ID_ANCIENT_SPIRIT, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_ANCIENT_SPIRIT, m_creature);
                     m_creature->ForcedDespawn(10000);
                 }
                 break;
@@ -749,12 +749,12 @@ struct npc_areiAI : public npc_escortAI, private DialogueHelper
     {
         DialogueUpdate(uiDiff);
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiWitherStrikeTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_WITHER_STRIKE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_WITHER_STRIKE) == CAST_OK)
                 m_uiWitherStrikeTimer = urand(3000, 6000);
         }
         else
@@ -764,7 +764,7 @@ struct npc_areiAI : public npc_escortAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_npc_arei(Creature* pCreature)
+UnitAI* GetAI_npc_arei(Creature* pCreature)
 {
     return new npc_areiAI(pCreature);
 }
@@ -779,9 +779,7 @@ bool QuestAccept_npc_arei(Player* pPlayer, Creature* pCreature, const Quest* pQu
 
 void AddSC_felwood()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_kitten";
     pNewScript->GetAI = &GetAI_npc_kitten;
     pNewScript->pEffectDummyNPC = &EffectDummyCreature_npc_kitten;

@@ -167,7 +167,7 @@ void WorldSession::HandleAutoEquipItemOpcode(WorldPacket& recv_data)
     {
         _player->RemoveItem(srcbag, srcslot, true);
         _player->EquipItem(dest, pSrcItem, true);
-        _player->AutoUnequipOffhandIfNeed();
+        _player->AutoUnequipOffhandIfNeed(srcbag);
     }
     else                                                    // have currently equipped item, not simple case
     {
@@ -184,7 +184,7 @@ void WorldSession::HandleAutoEquipItemOpcode(WorldPacket& recv_data)
         // check dest->src move possibility
         ItemPosCountVec sSrc;
         uint16 eSrc = 0;
-        if (_player->IsInventoryPos(src))
+        if (Player::IsInventoryPos(src))
         {
             msg = _player->CanStoreItem(srcbag, srcslot, sSrc, pDstItem, true);
             if (msg != EQUIP_ERR_OK)
@@ -192,7 +192,7 @@ void WorldSession::HandleAutoEquipItemOpcode(WorldPacket& recv_data)
             if (msg != EQUIP_ERR_OK)
                 msg = _player->CanStoreItem(NULL_BAG, NULL_SLOT, sSrc, pDstItem, true);
         }
-        else if (_player->IsBankPos(src))
+        else if (Player::IsBankPos(src))
         {
             msg = _player->CanBankItem(srcbag, srcslot, sSrc, pDstItem, true);
             if (msg != EQUIP_ERR_OK)
@@ -200,7 +200,7 @@ void WorldSession::HandleAutoEquipItemOpcode(WorldPacket& recv_data)
             if (msg != EQUIP_ERR_OK)
                 msg = _player->CanBankItem(NULL_BAG, NULL_SLOT, sSrc, pDstItem, true);
         }
-        else if (_player->IsEquipmentPos(src))
+        else if (Player::IsEquipmentPos(src))
         {
             msg = _player->CanEquipItem(srcslot, eSrc, pDstItem, true);
             if (msg == EQUIP_ERR_OK)
@@ -221,14 +221,14 @@ void WorldSession::HandleAutoEquipItemOpcode(WorldPacket& recv_data)
         _player->EquipItem(dest, pSrcItem, true);
 
         // add to src
-        if (_player->IsInventoryPos(src))
+        if (Player::IsInventoryPos(src))
             _player->StoreItem(sSrc, pDstItem, true);
-        else if (_player->IsBankPos(src))
+        else if (Player::IsBankPos(src))
             _player->BankItem(sSrc, pDstItem, true);
-        else if (_player->IsEquipmentPos(src))
+        else if (Player::IsEquipmentPos(src))
             _player->EquipItem(eSrc, pDstItem, true);
 
-        _player->AutoUnequipOffhandIfNeed();
+        _player->AutoUnequipOffhandIfNeed(srcbag);
     }
 }
 
@@ -243,7 +243,7 @@ void WorldSession::HandleDestroyItemOpcode(WorldPacket& recv_data)
     uint16 pos = (bag << 8) | slot;
 
     // prevent drop unequipable items (in combat, for example) and non-empty bags
-    if (_player->IsEquipmentPos(pos) || _player->IsBagPos(pos))
+    if (Player::IsEquipmentPos(pos) || Player::IsBagPos(pos))
     {
         InventoryResult msg = _player->CanUnequipItem(pos, false);
         if (msg != EQUIP_ERR_OK)
@@ -329,11 +329,11 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket& recv_data)
             data << pProto->ItemStat[i].ItemStatType;
             data << pProto->ItemStat[i].ItemStatValue;
         }
-        for (int i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+        for (auto i : pProto->Damage)
         {
-            data << pProto->Damage[i].DamageMin;
-            data << pProto->Damage[i].DamageMax;
-            data << pProto->Damage[i].DamageType;
+            data << i.DamageMin;
+            data << i.DamageMax;
+            data << i.DamageType;
         }
 
         // resistances (7)
@@ -349,26 +349,26 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket& recv_data)
         data << pProto->AmmoType;
         data << pProto->RangedModRange;
 
-        for (int s = 0; s < MAX_ITEM_PROTO_SPELLS; ++s)
+        for (const auto& Spell : pProto->Spells)
         {
             // send DBC data for cooldowns in same way as it used in Spell::SendSpellCooldown
             // use `item_template` or if not set then only use spell cooldowns
-            SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(pProto->Spells[s].SpellId);
+            SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(Spell.SpellId);
             if (spell)
             {
-                bool db_data = pProto->Spells[s].SpellCooldown >= 0 || pProto->Spells[s].SpellCategoryCooldown >= 0;
+                bool db_data = Spell.SpellCooldown >= 0 || Spell.SpellCategoryCooldown >= 0;
 
-                data << pProto->Spells[s].SpellId;
-                data << pProto->Spells[s].SpellTrigger;
+                data << Spell.SpellId;
+                data << Spell.SpellTrigger;
 
                 // let the database control the sign here.  negative means that the item should be consumed once the charges are consumed.
-                data << pProto->Spells[s].SpellCharges;
+                data << Spell.SpellCharges;
 
                 if (db_data)
                 {
-                    data << uint32(pProto->Spells[s].SpellCooldown);
-                    data << uint32(pProto->Spells[s].SpellCategory);
-                    data << uint32(pProto->Spells[s].SpellCategoryCooldown);
+                    data << uint32(Spell.SpellCooldown);
+                    data << uint32(Spell.SpellCategory);
+                    data << uint32(Spell.SpellCategoryCooldown);
                 }
                 else
                 {
@@ -405,10 +405,10 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket& recv_data)
         data << pProto->Map;                                // Added in 1.12.x & 2.0.1 client branch
         data << pProto->BagFamily;
         data << pProto->TotemCategory;
-        for (int s = 0; s < MAX_ITEM_PROTO_SOCKETS; ++s)
+        for (auto s : pProto->Socket)
         {
-            data << pProto->Socket[s].Color;
-            data << pProto->Socket[s].Content;
+            data << s.Color;
+            data << s.Content;
         }
         data << uint32(pProto->socketBonus);
         data << uint32(pProto->GemProperties);
@@ -636,7 +636,6 @@ void WorldSession::HandleBuybackItem(WorldPacket& recv_data)
         }
         else
             _player->SendEquipError(msg, pItem, nullptr);
-        return;
     }
     else
         _player->SendBuyError(BUY_ERR_CANT_FIND_ITEM, pCreature, 0, 0);
@@ -684,7 +683,8 @@ void WorldSession::HandleBuyItemOpcode(WorldPacket& recv_data)
     DEBUG_LOG("WORLD: Received opcode CMSG_BUY_ITEM");
     ObjectGuid vendorGuid;
     uint32 item;
-    uint8 count, unk1;
+    uint8 count;
+    uint8 unk1; // hardcoded 1u inside TBC client
 
     recv_data >> vendorGuid >> item >> count >> unk1;
 
@@ -697,7 +697,7 @@ void WorldSession::HandleListInventoryOpcode(WorldPacket& recv_data)
 
     recv_data >> guid;
 
-    if (!GetPlayer()->isAlive())
+    if (!GetPlayer()->IsAlive())
         return;
 
     DEBUG_LOG("WORLD: Received opcode CMSG_LIST_INVENTORY");
@@ -767,7 +767,7 @@ void WorldSession::SendListInventory(ObjectGuid vendorguid) const
                     if ((pProto->AllowableRace & _player->getRaceMask()) == 0)
                         continue;
 
-                    if (crItem->conditionId && !sObjectMgr.IsPlayerMeetToCondition(crItem->conditionId, _player, pCreature->GetMap(), pCreature, CONDITION_FROM_VENDOR))
+                    if (crItem->conditionId && !sObjectMgr.IsConditionSatisfied(crItem->conditionId, _player, pCreature->GetMap(), pCreature, CONDITION_FROM_VENDOR))
                         continue;
                 }
 
@@ -820,9 +820,9 @@ void WorldSession::HandleAutoStoreBagItemOpcode(WorldPacket& recv_data)
     uint16 src = pItem->GetPos();
 
     // check unequip potability for equipped items and bank bags
-    if (_player->IsEquipmentPos(src) || _player->IsBagPos(src))
+    if (Player::IsEquipmentPos(src) || Player::IsBagPos(src))
     {
-        InventoryResult msg = _player->CanUnequipItem(src, !_player->IsBagPos(src));
+        InventoryResult msg = _player->CanUnequipItem(src, !Player::IsBagPos(src));
         if (msg != EQUIP_ERR_OK)
         {
             _player->SendEquipError(msg, pItem, nullptr);
@@ -964,7 +964,7 @@ void WorldSession::HandleAutoStoreBankItemOpcode(WorldPacket& recvPacket)
     if (!pItem)
         return;
 
-    if (_player->IsBankPos(srcbag, srcslot))                // moving from bank to inventory
+    if (Player::IsBankPos(srcbag, srcslot))                // moving from bank to inventory
     {
         ItemPosCountVec dest;
         InventoryResult msg = _player->CanStoreItem(NULL_BAG, NULL_SLOT, dest, pItem, false);
@@ -994,7 +994,7 @@ void WorldSession::HandleAutoStoreBankItemOpcode(WorldPacket& recvPacket)
 
 void WorldSession::HandleSetAmmoOpcode(WorldPacket& recv_data)
 {
-    if (!GetPlayer()->isAlive())
+    if (!GetPlayer()->IsAlive())
     {
         GetPlayer()->SendEquipError(EQUIP_ERR_YOU_ARE_DEAD, nullptr, nullptr);
         return;
@@ -1009,17 +1009,6 @@ void WorldSession::HandleSetAmmoOpcode(WorldPacket& recv_data)
         GetPlayer()->RemoveAmmo();
     else
         GetPlayer()->SetAmmo(item);
-}
-
-void WorldSession::SendEnchantmentLog(ObjectGuid targetGuid, ObjectGuid casterGuid, uint32 itemId, uint32 spellId) const
-{
-    WorldPacket data(SMSG_ENCHANTMENTLOG, (8 + 8 + 4 + 4 + 1)); // last check 2.0.10
-    data << ObjectGuid(targetGuid);
-    data << ObjectGuid(casterGuid);
-    data << uint32(itemId);
-    data << uint32(spellId);
-    data << uint8(0);
-    SendPacket(data);
 }
 
 void WorldSession::SendItemEnchantTimeUpdate(ObjectGuid playerGuid, ObjectGuid itemGuid, uint32 slot, uint32 duration) const
@@ -1052,7 +1041,6 @@ void WorldSession::HandleItemNameQueryOpcode(WorldPacket& recv_data)
         data << name;
         data << uint32(pProto->InventoryType);
         SendPacket(data);
-        return;
     }
     else
     {
@@ -1162,7 +1150,7 @@ void WorldSession::HandleWrapItemOpcode(WorldPacket& recv_data)
     {
         // after save it will be impossible to remove the item from the queue
         item->RemoveFromUpdateQueueOf(_player);
-        item->SaveToDB();                                   // item gave inventory record unchanged and can be save standalone
+        _player->SaveItemToInventory(item);
     }
     CharacterDatabase.CommitTransaction();
 
@@ -1181,8 +1169,8 @@ void WorldSession::HandleSocketOpcode(WorldPacket& recv_data)
     if (!itemGuid.IsItem())
         return;
 
-    for (int i = 0; i < MAX_GEM_SOCKETS; ++i)
-        recv_data >> gemGuids[i];
+    for (auto& gemGuid : gemGuids)
+        recv_data >> gemGuid;
 
     // cheat -> tried to socket same gem multiple times
     for (int i = 0; i < MAX_GEM_SOCKETS; ++i)
@@ -1307,7 +1295,7 @@ void WorldSession::HandleSocketOpcode(WorldPacket& recv_data)
     {
         if (GemEnchants[i])
         {
-            itemTarget->SetEnchantment(EnchantmentSlot(SOCK_ENCHANTMENT_SLOT + i), GemEnchants[i], 0, 0);
+            itemTarget->SetEnchantment(EnchantmentSlot(SOCK_ENCHANTMENT_SLOT + i), GemEnchants[i], 0, 0, _player->GetObjectGuid());
             if (Item* guidItem = gemGuids[i] ? _player->GetItemByGuid(gemGuids[i]) : nullptr)
                 _player->DestroyItem(guidItem->GetBagSlot(), guidItem->GetSlot(), true);
         }
@@ -1320,7 +1308,7 @@ void WorldSession::HandleSocketOpcode(WorldPacket& recv_data)
     if (SocketBonusActivated != SocketBonusToBeActivated)   // if there was a change...
     {
         _player->ApplyEnchantment(itemTarget, BONUS_ENCHANTMENT_SLOT, false);
-        itemTarget->SetEnchantment(BONUS_ENCHANTMENT_SLOT, (SocketBonusToBeActivated ? itemTarget->GetProto()->socketBonus : 0), 0, 0);
+        itemTarget->SetEnchantment(BONUS_ENCHANTMENT_SLOT, (SocketBonusToBeActivated ? itemTarget->GetProto()->socketBonus : 0), 0, 0, _player->GetObjectGuid());
         _player->ApplyEnchantment(itemTarget, BONUS_ENCHANTMENT_SLOT, true);
         // it is not displayed, client has an inbuilt system to determine if the bonus is activated
     }

@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Scarlet Monastery
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "scarlet_monastery.h"
 
 instance_scarlet_monastery::instance_scarlet_monastery(Map* pMap) : ScriptedInstance(pMap)
@@ -39,6 +39,10 @@ void instance_scarlet_monastery::OnCreatureCreate(Creature* pCreature)
     switch (pCreature->GetEntry())
     {
         case NPC_MOGRAINE:
+            m_npcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
+            if (GetData(TYPE_ASHBRINGER_EVENT) == IN_PROGRESS)
+                DoOrSimulateScriptTextForThisInstance(SAY_ASHBRINGER_ENTRANCE, NPC_MOGRAINE);
+            break;
         case NPC_WHITEMANE:
         case NPC_VORREL:
             m_npcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
@@ -62,6 +66,12 @@ void instance_scarlet_monastery::OnObjectCreate(GameObject* pGo)
         m_goEntryGuidStore[GO_WHITEMANE_DOOR] = pGo->GetObjectGuid();
 }
 
+void instance_scarlet_monastery::OnPlayerEnter(Player* pPlayer)
+{
+    if (pPlayer->HasItemOrGemWithIdEquipped(ITEM_CORRUPTED_ASHRBRINGER, 1) && GetData(TYPE_ASHBRINGER_EVENT) == NOT_STARTED)
+        SetData(TYPE_ASHBRINGER_EVENT, IN_PROGRESS);
+}
+
 void instance_scarlet_monastery::SetData(uint32 uiType, uint32 uiData)
 {
     if (uiType == TYPE_MOGRAINE_AND_WHITE_EVENT)
@@ -73,12 +83,16 @@ void instance_scarlet_monastery::SetData(uint32 uiType, uint32 uiData)
 
         m_auiEncounter[0] = uiData;
     }
+    else if (uiType == TYPE_ASHBRINGER_EVENT)
+        m_auiEncounter[1] = uiData;
 }
 
 uint32 instance_scarlet_monastery::GetData(uint32 uiData) const
 {
     if (uiData == TYPE_MOGRAINE_AND_WHITE_EVENT)
         return m_auiEncounter[0];
+    if (uiData == TYPE_ASHBRINGER_EVENT)
+        return m_auiEncounter[1];
 
     return 0;
 }
@@ -90,9 +104,7 @@ InstanceData* GetInstanceData_instance_scarlet_monastery(Map* pMap)
 
 void AddSC_instance_scarlet_monastery()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_scarlet_monastery";
     pNewScript->GetInstanceData = &GetInstanceData_instance_scarlet_monastery;
     pNewScript->RegisterSelf();

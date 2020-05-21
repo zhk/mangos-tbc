@@ -21,7 +21,7 @@ SDComment: Submerged phase visual spells NYI; they require additional research.
 SDCategory: Slave Pens
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "Entities/TemporarySpawn.h"
 
 enum
@@ -128,7 +128,7 @@ struct boss_ahuneAI : public Scripted_NoMovementAI
         m_creature->ForcedDespawn();
     }
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& /*damage*/, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
         // it's not clear whether this should work like this or should be handled by the proc aura
         if (Creature* pCore = m_creature->GetMap()->GetCreature(m_frozenCoreGuid))
@@ -186,7 +186,7 @@ struct boss_ahuneAI : public Scripted_NoMovementAI
             m_bHasCombatStarted = true;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiPhase == PHASE_GROUND)
@@ -264,7 +264,7 @@ struct boss_ahuneAI : public Scripted_NoMovementAI
     }
 };
 
-CreatureAI* GetAI_boss_ahune(Creature* pCreature)
+UnitAI* GetAI_boss_ahune(Creature* pCreature)
 {
     return new boss_ahuneAI(pCreature);
 }
@@ -288,7 +288,7 @@ struct npc_frozen_coreAI : public Scripted_NoMovementAI
         DoCastSpellIfCan(m_creature, SPELL_ICE_SPEAR_AURA, CAST_TRIGGERED | CAST_AURA_NOT_PRESENT);
     }
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& /*damage*/, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
         // it's not clear whether this should work like this or should be handled by the proc aura
         if (Creature* pAhune = m_creature->GetMap()->GetCreature(m_ahuheGuid))
@@ -310,7 +310,7 @@ struct npc_frozen_coreAI : public Scripted_NoMovementAI
     void UpdateAI(const uint32 /*uiDiff*/) override { }
 };
 
-CreatureAI* GetAI_npc_frozen_core(Creature* pCreature)
+UnitAI* GetAI_npc_frozen_core(Creature* pCreature)
 {
     return new npc_frozen_coreAI(pCreature);
 }
@@ -338,7 +338,7 @@ struct npc_ice_spear_bunnyAI : public Scripted_NoMovementAI
             m_iceSpearGuid = pGo->GetObjectGuid();
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
     {
         if (eventType == AI_EVENT_CUSTOM_A)
         {
@@ -368,7 +368,7 @@ struct npc_ice_spear_bunnyAI : public Scripted_NoMovementAI
     void UpdateAI(const uint32 /*uiDiff*/) override { }
 };
 
-CreatureAI* GetAI_npc_ice_spear_bunny(Creature* pCreature)
+UnitAI* GetAI_npc_ice_spear_bunny(Creature* pCreature)
 {
     return new npc_ice_spear_bunnyAI(pCreature);
 }
@@ -390,9 +390,7 @@ bool EffectDummyCreature_npc_ice_spear_bunny(Unit* pCaster, uint32 uiSpellId, Sp
 
 void AddSC_boss_ahune()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_ahune";
     pNewScript->GetAI = &GetAI_boss_ahune;
     pNewScript->RegisterSelf();

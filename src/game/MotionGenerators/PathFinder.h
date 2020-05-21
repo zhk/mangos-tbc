@@ -68,6 +68,7 @@ class PathFinder
         // Calculate the path from owner to given destination
         // return: true if new path was calculated, false otherwise (no change needed)
         bool calculate(float destX, float destY, float destZ, bool forceDest = false);
+        bool calculate(const Vector3& start, const Vector3& dest, bool forceDest = false);
 
         // option setters - use optional
         void setUseStrightPath(bool useStraightPath) { m_useStraightPath = useStraightPath; };
@@ -138,7 +139,7 @@ class PathFinder
                             unsigned char& steerPosFlag, dtPolyRef& steerPosRef) const;
         dtStatus findSmoothPath(const float* startPos, const float* endPos,
                                 const dtPolyRef* polyPath, uint32 polyPathSize,
-                                float* smoothPath, int* smoothPathSize, uint32 smoothPathMaxSize);
+                                float* smoothPath, int* smoothPathSize, uint32 maxSmoothPathSize);
 };
 
 #endif

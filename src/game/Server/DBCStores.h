@@ -28,9 +28,6 @@
 bool IsAcceptableClientBuild(uint32 build);
 std::string AcceptableClientBuildsListStr();
 
-typedef std::list<uint32> SimpleFactionsList;
-
-SimpleFactionsList const* GetFactionTeamList(uint32 faction);
 char const* GetPetName(uint32 petfamily, uint32 dbclang);
 uint32 GetTalentSpellCost(uint32 spellId);
 uint32 GetTalentSpellCost(TalentSpellPos const* pos);
@@ -53,10 +50,11 @@ enum ContentLevels
 };
 ContentLevels GetContentLevelsForMapAndZone(uint32 mapid, uint32 zoneId);
 
-ChatChannelsEntry const* GetChannelEntryFor(uint32 channel_id);
+ChatChannelsEntry const* GetChatChannelsEntryFor(const std::string& name, uint32 channel_id = 0);
 
 bool IsTotemCategoryCompatiableWith(uint32 itemTotemCategoryId, uint32 requiredTotemCategoryId);
 
+bool MapCoordinateVsZoneCheck(float x, float y, uint32 mapid, uint32 zone);
 bool Zone2MapCoordinates(float& x, float& y, uint32 zone);
 bool Map2ZoneCoordinates(float& x, float& y, uint32 zone);
 
@@ -76,22 +74,30 @@ extern DBCStorage <BattlemasterListEntry>        sBattlemasterListStore;
 // extern DBCStorage <ChatChannelsEntry>           sChatChannelsStore; -- accessed using function, no usable index
 extern DBCStorage <CharStartOutfitEntry>         sCharStartOutfitStore;
 extern DBCStorage <CharTitlesEntry>              sCharTitlesStore;
+extern DBCStorage <ChatChannelsEntry>            sChatChannelsStore;
 extern DBCStorage <ChrClassesEntry>              sChrClassesStore;
 extern DBCStorage <ChrRacesEntry>                sChrRacesStore;
+extern DBCStorage <CinematicCameraEntry>         sCinematicCameraStore;
 extern DBCStorage <CinematicSequencesEntry>      sCinematicSequencesStore;
 extern DBCStorage <CreatureDisplayInfoEntry>     sCreatureDisplayInfoStore;
 extern DBCStorage <CreatureDisplayInfoExtraEntry>sCreatureDisplayInfoExtraStore;
 extern DBCStorage <CreatureFamilyEntry>          sCreatureFamilyStore;
+extern DBCStorage <CreatureModelDataEntry>       sCreatureModelDataStore;
 extern DBCStorage <CreatureSpellDataEntry>       sCreatureSpellDataStore;
 extern DBCStorage <CreatureTypeEntry>            sCreatureTypeStore;
 extern DBCStorage <DurabilityCostsEntry>         sDurabilityCostsStore;
 extern DBCStorage <DurabilityQualityEntry>       sDurabilityQualityStore;
 extern DBCStorage <EmotesEntry>                  sEmotesStore;
 extern DBCStorage <EmotesTextEntry>              sEmotesTextStore;
-extern DBCStorage <FactionEntry>                 sFactionStore;
+//extern DBCStorage <FactionEntry>                 sFactionStore;
 extern DBCStorage <FactionTemplateEntry>         sFactionTemplateStore;
 extern DBCStorage <GameObjectDisplayInfoEntry>   sGameObjectDisplayInfoStore;
 extern DBCStorage <GemPropertiesEntry>           sGemPropertiesStore;
+
+extern DBCStorage <GMSurveyCurrentSurveyEntry>   sGMSurveyCurrentSurveyStore;
+extern DBCStorage <GMSurveyQuestionsEntry>       sGMSurveyQuestionsStore;
+extern DBCStorage <GMSurveyEntry>                sGMSurveySurveysStore;
+extern DBCStorage <GMTicketCategoryEntry>        sGMTicketCategoryStore;
 
 extern DBCStorage <GtCombatRatingsEntry>         sGtCombatRatingsStore;
 extern DBCStorage <GtChanceToMeleeCritBaseEntry> sGtChanceToMeleeCritBaseStore;
@@ -120,6 +126,7 @@ extern DBCStorage <RandomPropertiesPointsEntry>  sRandomPropertiesPointsStore;
 extern DBCStorage <SkillLineEntry>               sSkillLineStore;
 extern DBCStorage <SkillLineAbilityEntry>        sSkillLineAbilityStore;
 extern DBCStorage <SkillRaceClassInfoEntry>      sSkillRaceClassInfoStore;
+extern DBCStorage <SkillTiersEntry>              sSkillTiersStore;
 extern DBCStorage <SoundEntriesEntry>            sSoundEntriesStore;
 extern DBCStorage <SpellCastTimesEntry>          sSpellCastTimesStore;
 extern DBCStorage <SpellDurationEntry>           sSpellDurationStore;
@@ -132,6 +139,7 @@ extern PetFamilySpellsStore                      sPetFamilySpellsStore;
 extern DBCStorage <SpellRadiusEntry>             sSpellRadiusStore;
 extern DBCStorage <SpellRangeEntry>              sSpellRangeStore;
 extern DBCStorage <SpellShapeshiftFormEntry>     sSpellShapeshiftFormStore;
+extern DBCStorage <SpellVisualEntry>             sSpellVisualStore;
 extern DBCStorage <StableSlotPricesEntry>        sStableSlotPricesStore;
 extern DBCStorage <SummonPropertiesEntry>        sSummonPropertiesStore;
 extern DBCStorage <TalentEntry>                  sTalentStore;
@@ -145,7 +153,6 @@ extern DBCStorage <TotemCategoryEntry>           sTotemCategoryStore;
 extern DBCStorage <WMOAreaTableEntry>            sWMOAreaTableStore;
 // extern DBCStorage <WorldMapAreaEntry>           sWorldMapAreaStore; -- use Zone2MapCoordinates and Map2ZoneCoordinates
 // extern DBCStorage <WorldMapOverlayEntry>         sWorldMapOverlayStore; -- not used currently
-extern DBCStorage <WorldSafeLocsEntry>           sWorldSafeLocsStore;
 
 void LoadDBCStores(const std::string& dataPath);
 

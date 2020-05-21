@@ -23,6 +23,7 @@
 #include "Entities/Creature.h"
 #include "AI/BaseAI/CreatureAI.h"
 #include "Entities/Unit.h"
+#include <set>
 
 class Player;
 class WorldObject;
@@ -33,7 +34,7 @@ class WorldObject;
 
 #define LOG_PROCESS_EVENT                                                                                                       \
     DEBUG_FILTER_LOG(LOG_FILTER_EVENT_AI_DEV, "CreatureEventAI: Event type %u (script %u) triggered for %s (invoked by %s)",    \
-                     holder.Event.event_type, holder.Event.event_id, m_creature->GetGuidStr().c_str(), actionInvoker ? actionInvoker->GetGuidStr().c_str() : "<no invoker>")
+                     holder.event.event_type, holder.event.event_id, m_creature->GetGuidStr().c_str(), actionInvoker ? actionInvoker->GetGuidStr().c_str() : "<no invoker>")
 
 enum EventAI_Type
 {
@@ -42,12 +43,12 @@ enum EventAI_Type
     EVENT_T_HP                      = 2,                    // HPMax%, HPMin%, RepeatMin, RepeatMax
     EVENT_T_MANA                    = 3,                    // ManaMax%,ManaMin% RepeatMin, RepeatMax
     EVENT_T_AGGRO                   = 4,                    // NONE
-    EVENT_T_KILL                    = 5,                    // RepeatMin, RepeatMax
+    EVENT_T_KILL                    = 5,                    // RepeatMin, RepeatMax, PlayerOnly (1)
     EVENT_T_DEATH                   = 6,                    // ConditionId
     EVENT_T_EVADE                   = 7,                    // NONE
     EVENT_T_SPELLHIT                = 8,                    // SpellID, School, RepeatMin, RepeatMax
     EVENT_T_RANGE                   = 9,                    // MinDist, MaxDist, RepeatMin, RepeatMax
-    EVENT_T_OOC_LOS                 = 10,                   // NoHostile, MaxRnage, RepeatMin, RepeatMax
+    EVENT_T_OOC_LOS                 = 10,                   // NoHostile, MaxRange, RepeatMin, RepeatMax, PlayerOnly, ConditionId
     EVENT_T_SPAWNED                 = 11,                   // Condition, CondValue1
     EVENT_T_TARGET_HP               = 12,                   // HPMax%, HPMin%, RepeatMin, RepeatMax
     EVENT_T_TARGET_CASTING          = 13,                   // RepeatMin, RepeatMax
@@ -59,7 +60,7 @@ enum EventAI_Type
     EVENT_T_QUEST_ACCEPT            = 19,                   // QuestID
     EVENT_T_QUEST_COMPLETE          = 20,                   //
     EVENT_T_REACHED_HOME            = 21,                   // NONE
-    EVENT_T_RECEIVE_EMOTE           = 22,                   // EmoteId, Condition, CondValue1, CondValue2
+    EVENT_T_RECEIVE_EMOTE           = 22,                   // EmoteId, ConditionId
     EVENT_T_AURA                    = 23,                   // Param1 = SpellID, Param2 = Number of time stacked, Param3/4 Repeat Min/Max
     EVENT_T_TARGET_AURA             = 24,                   // Param1 = SpellID, Param2 = Number of time stacked, Param3/4 Repeat Min/Max
     EVENT_T_SUMMONED_JUST_DIED      = 25,                   // CreatureId, RepeatMin, RepeatMax
@@ -71,6 +72,8 @@ enum EventAI_Type
     EVENT_T_ENERGY                  = 31,                   // EnergyMax%, EnergyMin%, RepeatMin, RepeatMax
     EVENT_T_SELECT_ATTACKING_TARGET = 32,                   // MinRange, MaxRange, RepeatMin, RepeatMax
     EVENT_T_FACING_TARGET           = 33,                   // Position, unused, RepeatMin, RepeatMax
+    EVENT_T_SPELLHIT_TARGET         = 34,                   // SpellID, School, RepeatMin, RepeatMax
+    EVENT_T_DEATH_PREVENTED         = 35,                   //
 
     EVENT_T_END,
 };
@@ -88,9 +91,9 @@ enum EventAI_ActionType
     ACTION_T_RANDOM_TEXTEMOTE           = 8,                // UNUSED
     ACTION_T_RANDOM_SOUND               = 9,                // SoundId1, SoundId2, SoundId3 (-1 in any field means no output if randomed that field)
     ACTION_T_RANDOM_EMOTE               = 10,               // EmoteId1, EmoteId2, EmoteId3 (-1 in any field means no output if randomed that field)
-    ACTION_T_CAST                       = 11,               // SpellId, Target, CastFlags
+    ACTION_T_CAST                       = 11,               // SpellId, Target - default = 15, CastFlags
     ACTION_T_SPAWN                      = 12,               // CreatureID, Target, Duration in ms
-    ACTION_T_THREAT_SINGLE_PCT          = 13,               // Threat%, Target
+    ACTION_T_THREAT_SINGLE              = 13,               // Threat, Target, IsDirect
     ACTION_T_THREAT_ALL_PCT             = 14,               // Threat%
     ACTION_T_QUEST_EVENT                = 15,               // QuestID, Target
     ACTION_T_CAST_EVENT                 = 16,               // QuestID, SpellId, Target - must be removed as hack?
@@ -113,20 +116,20 @@ enum EventAI_ActionType
     ACTION_T_KILLED_MONSTER             = 33,               // CreatureId, Target
     ACTION_T_SET_INST_DATA              = 34,               // Field, Data
     ACTION_T_SET_INST_DATA64            = 35,               // Field, Target
-    ACTION_T_UPDATE_TEMPLATE            = 36,               // Entry, Team
+    ACTION_T_UPDATE_TEMPLATE            = 36,               // Entry
     ACTION_T_DIE                        = 37,               // No Params
     ACTION_T_ZONE_COMBAT_PULSE          = 38,               // No Params
     ACTION_T_CALL_FOR_HELP              = 39,               // Radius
     ACTION_T_SET_SHEATH                 = 40,               // Sheath (0-passive,1-melee,2-ranged)
     ACTION_T_FORCE_DESPAWN              = 41,               // Delay (0-instant despawn)
-    ACTION_T_SET_INVINCIBILITY_HP_LEVEL = 42,               // MinHpValue, format(0-flat,1-percent from max health)
+    ACTION_T_SET_DEATH_PREVENTION       = 42,               // 0-off/1-on
     ACTION_T_MOUNT_TO_ENTRY_OR_MODEL    = 43,               // Creature_template entry(param1) OR ModelId (param2) (or 0 for both to unmount)
     ACTION_T_CHANCED_TEXT               = 44,               // Chance to display the text, TextId1, optionally TextId2. If more than just -TextId1 is defined, randomize. Negative values.
     ACTION_T_THROW_AI_EVENT             = 45,               // EventType, Radius, Target
     ACTION_T_SET_THROW_MASK             = 46,               // EventTypeMask, unused, unused
     ACTION_T_SET_STAND_STATE            = 47,               // StandState, unused, unused
-    ACTION_T_CHANGE_MOVEMENT            = 48,               // MovementType, WanderDistance if Movement Type 1 and PathId if Movement Type 2, unused
-    ACTION_T_DYNAMIC_MOVEMENT           = 49,               // EnableDynamicMovement (1 = on; 0 = off)
+    ACTION_T_CHANGE_MOVEMENT            = 48,               // MovementType, WanderDistance if Movement Type 1 and PathId if Movement Type 2, asDefault
+    ACTION_T_REUSE                      = 49,               // REUSE
     ACTION_T_SET_REACT_STATE            = 50,               // React state, unused, unused
     ACTION_T_PAUSE_WAYPOINTS            = 51,               // DoPause 0: unpause waypoint 1: pause waypoint, unused, unused
     ACTION_T_INTERRUPT_SPELL            = 52,               // SpellType enum CurrentSpellTypes, unused, unused
@@ -134,6 +137,9 @@ enum EventAI_ActionType
     ACTION_T_TEXT_NEW                   = 54,               // Text ID, target, template Id
     ACTION_T_ATTACK_START               = 55,               // Target, unused, unused
     ACTION_T_DESPAWN_GUARDIANS          = 56,               // Guardian Entry ID (or 0 to despawn all guardians), unused, unused
+    ACTION_T_SET_RANGED_MODE            = 57,               // type of ranged mode, distance to chase at
+    ACTION_T_SET_WALK                   = 58,               // type of walking, unused, unused
+    ACTION_T_SET_FACING                 = 59,               // Target, 0 - set, 1 - reset
 
     ACTION_T_END,
 };
@@ -160,7 +166,7 @@ enum Target
     TARGET_T_HOSTILE_RANDOM_NOT_TOP_PLAYER  = 9,            // Any random player from threat list except top threat
 
     // Summon targeting
-    TARGET_T_SPAWNER                       = 11,           // Owner of unit if exists
+    TARGET_T_SPAWNER                        = 11,           // Owner of unit if exists
 
     // Event specific targeting
     TARGET_T_EVENT_SPECIFIC                 = 12,           // Filled by specific event
@@ -168,9 +174,16 @@ enum Target
     // Player associations
     TARGET_T_PLAYER_INVOKER                 = 13,           // Player who initiated hostile contact with this npc
     TARGET_T_PLAYER_TAPPED                  = 14,           // Player who currently holds to score the kill credit from the npc
+
+    // Default Spell Target
+    TARGET_T_NONE                           = 15,           // Default spell target - sets nullptr which should be most common spell fill
+
+    TARGET_T_HOSTILE_RANDOM_MANA            = 16,           // Random target with mana
+    TARGET_T_NEAREST_AOE_TARGET             = 17,           // Nearest target for aoe
+    TARGET_T_HOSTILE_FARTHEST_AWAY          = 18,           // Farthest away target, excluding melee range
 };
 
-enum EventFlags
+enum EventFlags : uint32
 {
     EFLAG_REPEATABLE            = 0x01,                     // Event repeats
     EFLAG_NORMAL                = 0x02,                     // Event only occurs in Normal instance difficulty
@@ -180,6 +193,9 @@ enum EventFlags
     EFLAG_RANDOM_ACTION         = 0x20,                     // Event only execute one from existed actions instead each action.
     EFLAG_RESERVED_6            = 0x40,
     EFLAG_DEBUG_ONLY            = 0x80,                     // Event only occurs in debug build
+    EFLAG_RANGED_MODE_ONLY      = 0x100,                    // Event only occurs in ranged mode
+    EFLAG_MELEE_MODE_ONLY       = 0x200,                    // Event only occurs in melee mode
+    EFLAG_COMBAT_ACTION         = 0x400,                    // First action must succeed
     // no free bits, uint8 field
     EFLAG_DIFFICULTY_ALL        = (EFLAG_NORMAL | EFLAG_HEROIC)
 };
@@ -189,6 +205,14 @@ enum SpawnedEventMode
     SPAWNED_EVENT_ALWAY = 0,
     SPAWNED_EVENT_MAP   = 1,
     SPAWNED_EVENT_ZONE  = 2
+};
+
+enum WalkSetting : uint32
+{
+    RUN_DEFAULT  = 0, // Default for OOC
+    WALK_DEFAULT = 1,
+    RUN_CHASE    = 2, // Default for combat
+    WALK_CHASE   = 3,
 };
 
 struct CreatureEventAI_Action
@@ -251,12 +275,13 @@ struct CreatureEventAI_Action
             uint32 target;
             uint32 duration;
         } summon;
-        // ACTION_T_THREAT_SINGLE_PCT                       = 13
+        // ACTION_T_THREAT_SINGLE                           = 13
         struct
         {
-            int32 percent;
+            int32 value;
             uint32 target;
-        } threat_single_pct;
+            uint32 isDirect;
+        } threat_single;
         // ACTION_T_THREAT_ALL_PCT                          = 14
         struct
         {
@@ -377,7 +402,6 @@ struct CreatureEventAI_Action
         struct
         {
             uint32 creatureId;
-            uint32 team;
         } update_template;
         // ACTION_T_CALL_FOR_HELP                           = 39
         struct
@@ -394,12 +418,11 @@ struct CreatureEventAI_Action
         {
             uint32 msDelay;
         } forced_despawn;
-        // ACTION_T_SET_INVINCIBILITY_HP_LEVEL              = 42
+        // ACTION_T_SET_DEATH_PREVENTION                    = 42
         struct
         {
-            uint32 hp_level;
-            uint32 is_percent;
-        } invincibility_hp_level;
+            uint32 state;
+        } deathPrevention;
         // ACTION_T_MOUNT_TO_ENTRY_OR_MODEL                 = 43
         struct
         {
@@ -438,15 +461,15 @@ struct CreatureEventAI_Action
         {
             uint32 movementType;
             uint32 wanderORpathID;
-            uint32 unused1;
+            uint32 asDefault;
         } changeMovement;
-        // ACTION_T_DYNAMIC_MOVEMENT                        = 49
+        // ACTION_T_REUSE                                   = 49
         struct
         {
-            uint32 state;                                   // bool: 1 = on; 0 = off
             uint32 unused1;
             uint32 unused2;
-        } dynamicMovement;
+            uint32 unused3;
+        } reuse;
         // ACTION_T_SET_REACT_STATE                         = 50
         struct
         {
@@ -467,7 +490,7 @@ struct CreatureEventAI_Action
             uint32 unused1;
             uint32 unused2;
         } interruptSpell;
-        // ACTION_T_START_RELAY_SCRIPT                      = 51
+        // ACTION_T_START_RELAY_SCRIPT                      = 53
         struct
         {
             int32 relayId;                                 // dbscript_on_relay id
@@ -495,6 +518,24 @@ struct CreatureEventAI_Action
             uint32 unused;
             uint32 unused2;
         } despawnGuardians;
+        // ACTION_T_SET_RANGED_MODE
+        struct
+        {
+            uint32 type;                                    // enum RangeModeType
+            uint32 chaseDistance;                           // distance at which the AI will chase
+            uint32 unused;                                  // unused
+        } rangedMode;
+        // ACTION_T_SET_WALK
+        struct
+        {
+            WalkSetting type;                               // enum RangeModeType
+        } walkSetting;
+        // ACTION_T_SET_FACING
+        struct
+        {
+            uint32 target;                                  // Target
+            uint32 reset;                                   // 0 - set, 1 - reset
+        } setFacing;
         // RAW
         struct
         {
@@ -515,7 +556,7 @@ struct CreatureEventAI_Event
 
     EventAI_Type event_type : 16;
     uint8 event_chance : 8;
-    uint8 event_flags  : 8;
+    uint32 event_flags;
 
     union
     {
@@ -546,6 +587,7 @@ struct CreatureEventAI_Event
         {
             uint32 repeatMin;
             uint32 repeatMax;
+            uint32 playerOnly;
         } kill;
         // EVENT_T_DEATH                                    = 6
         struct
@@ -575,6 +617,8 @@ struct CreatureEventAI_Event
             uint32 maxRange;
             uint32 repeatMin;
             uint32 repeatMax;
+            uint32 playerOnly;
+            uint32 conditionId;
         } ooc_los;
         // EVENT_T_SPAWNED                                  = 11
         struct
@@ -631,9 +675,7 @@ struct CreatureEventAI_Event
         struct
         {
             uint32 emoteId;
-            uint32 condition;
-            uint32 conditionValue1;
-            uint32 conditionValue2;
+            uint32 conditionId;
         } receive_emote;
         // EVENT_T_AURA                                     = 23
         // EVENT_T_TARGET_AURA                              = 24
@@ -649,7 +691,7 @@ struct CreatureEventAI_Event
         // EVENT_T_RECEIVE_AI_EVENT                         = 30
         struct
         {
-            uint32 eventType;                               // See CreatureAI.h enum AIEventType - Receive only events of this type
+            uint32 eventType;                               // See UnitAI.h enum AIEventType - Receive only events of this type
             uint32 senderEntry;                             // Optional npc from only whom this event can be received
             uint32 unused1;
             uint32 unused2;
@@ -670,24 +712,47 @@ struct CreatureEventAI_Event
             uint32 repeatMin;
             uint32 repeatMax;
         } facingTarget;
+        // EVENT_T_SPELLHIT_TARGET                          = 34
+        struct
+        {
+            uint32 spellId;
+            uint32 schoolMask;                              // -1 (==0xffffffff) is ok value for full mask, or must be more limited mask like (0 < 1) = 1 for normal/physical school
+            uint32 repeatMin;
+            uint32 repeatMax;
+        } spell_hit_target;
+        // EVENT_T_DEATH_PREVENTED                          = 35
+        struct
+        {
+            uint32 unused;
+        } deathPrevented;
         // RAW
         struct
         {
-            uint32 param1;
-            uint32 param2;
-            uint32 param3;
-            uint32 param4;
+            uint32 params[6];
         } raw;
     };
 
     CreatureEventAI_Action action[MAX_ACTIONS];
 };
 
+struct CreatureEventAI_EventComputedData
+{
+    union
+    {
+        // EVENT_T_FRIENDLY_HP
+        struct
+        {
+            bool targetSelf;
+        } friendlyHp;
+    };
+};
+
 #define AIEVENT_DEFAULT_THROW_RADIUS    30.0f
 
 // Event_Map
 typedef std::vector<CreatureEventAI_Event> CreatureEventAI_Event_Vec;
-typedef std::unordered_map<uint32, CreatureEventAI_Event_Vec > CreatureEventAI_Event_Map;
+typedef std::unordered_map<uint32, CreatureEventAI_Event_Vec> CreatureEventAI_Event_Map;
+typedef std::unordered_map<uint32, CreatureEventAI_EventComputedData> CreatureEventAI_EventComputedData_Map;
 
 struct CreatureEventAI_Summon
 {
@@ -705,11 +770,14 @@ typedef std::unordered_map<uint32, CreatureEventAI_Summon> CreatureEventAI_Summo
 
 struct CreatureEventAIHolder
 {
-    CreatureEventAIHolder(CreatureEventAI_Event p) : Event(p), Time(0), Enabled(true) {}
+    CreatureEventAIHolder(CreatureEventAI_Event p) : event(p), timer(0), enabled(true), inProgress(false), eventTarget(nullptr) {}
 
-    CreatureEventAI_Event Event;
-    uint32 Time;
-    bool Enabled;
+    CreatureEventAI_Event event;
+    uint32 timer;
+    bool enabled;
+    bool inProgress;
+
+    Unit* eventTarget; // Target filled on specific event to be used in action
 
     // helper
     bool UpdateRepeatTimer(Creature* creature, uint32 repeatMin, uint32 repeatMax);
@@ -718,11 +786,12 @@ struct CreatureEventAIHolder
 class CreatureEventAI : public CreatureAI
 {
     public:
-        explicit CreatureEventAI(Creature* c);
+        explicit CreatureEventAI(Creature* creature);
         ~CreatureEventAI()
         {
             m_CreatureEventAIList.clear();
         }
+        void InitAI();
 
         void GetAIInformation(ChatHandler& reader) override;
 
@@ -737,32 +806,61 @@ class CreatureEventAI : public CreatureAI
         // void AttackStart(Unit* who) override;
         void MoveInLineOfSight(Unit* who) override;
         void SpellHit(Unit* unit, const SpellEntry* spellInfo) override;
-        void DamageTaken(Unit* doneBy, uint32& damage, DamageEffectType damagetype) override;
+        void SpellHitTarget(Unit* target, const SpellEntry* spell) override;
+        void DamageTaken(Unit* dealer, uint32& damage, DamageEffectType damagetype, SpellEntry const* spellInfo) override;
+        void JustPreventedDeath(Unit* attacker);
         void HealedBy(Unit* healer, uint32& healedAmount) override;
         void UpdateAI(const uint32 diff) override;
         void ReceiveEmote(Player* player, uint32 textEmote) override;
         void SummonedCreatureJustDied(Creature* summoned) override;
         void SummonedCreatureDespawn(Creature* summoned) override;
-        void ReceiveAIEvent(AIEventType eventType, Creature* sender, Unit* invoker, uint32 miscValue) override;
+        void ReceiveAIEvent(AIEventType eventType, Unit* sender, Unit* invoker, uint32 miscValue) override;
         // bool IsControllable() const override { return true; }
 
         static int Permissible(const Creature* creature);
 
-        virtual bool ProcessEvent(CreatureEventAIHolder& holder, Unit* actionInvoker = nullptr, Creature* AIEventSender = nullptr);
-        virtual void ProcessAction(CreatureEventAI_Action const& action, uint32 rnd, uint32 eventId, Unit* actionInvoker, Creature* AIEventSender);
+        void UpdateEventTimers(const uint32 diff);
+        void ProcessEvents(Unit* actionInvoker = nullptr, Unit* AIEventSender = nullptr);
+        bool CheckEvent(CreatureEventAIHolder& holder, Unit* actionInvoker = nullptr, Unit* AIEventSender = nullptr);
+        void ResetEvent(CreatureEventAIHolder& holder);
+        void CheckAndReadyEventForExecution(CreatureEventAIHolder& holder, Unit* actionInvoker = nullptr, Unit* AIEventSender = nullptr);
+        void IncreaseDepthIfNecessary() { if (m_depth >= m_creatureEventAITempList.size()) m_creatureEventAITempList.resize(m_depth + 1); }
+        virtual bool ProcessEvent(CreatureEventAIHolder& holder, Unit* actionInvoker = nullptr, Unit* AIEventSender = nullptr);
+        virtual bool ProcessAction(CreatureEventAI_Action const& action, uint32 rnd, uint32 eventId, Unit* actionInvoker, Unit* AIEventSender, Unit* eventTarget);
         inline uint32 GetRandActionParam(uint32 rnd, uint32 param1, uint32 param2, uint32 param3) const;
         inline int32 GetRandActionParam(uint32 rnd, int32 param1, int32 param2, int32 param3) const;
         /// If the bool& param is true, an error should be reported
-        inline Unit* GetTargetByType(uint32 target, Unit* actionInvoker, Creature* AIEventSender, bool& isError, uint32 forSpellId = 0, uint32 selectFlags = 0) const;
+        inline Unit* GetTargetByType(uint32 target, Unit* actionInvoker, Unit* AIEventSender, Unit* eventTarget, bool& isError, uint32 forSpellId = 0, uint32 selectFlags = 0) const;
 
         bool SpawnedEventConditionsCheck(CreatureEventAI_Event const& event) const;
 
-        void DoFindFriendlyMissingBuff(std::list<Creature*>& list, float range, uint32 spellid) const;
-        void DoFindFriendlyCC(std::list<Creature*>& list, float range) const;
+        void DoFindFriendlyMissingBuff(CreatureList& list, float range, uint32 spellId) const;
+        void DoFindFriendlyCC(CreatureList& list, float range) const;
 
+        void SetRangedMode(bool state, float distance, RangeModeType type);
+        void SetCurrentRangedMode(bool state);
+
+        void JustStoppedMovementOfTarget(SpellEntry const* spell, Unit* victim) override;
+        void OnSpellInterrupt(SpellEntry const* spellInfo) override;
+        void OnSpellCooldownAdded(SpellEntry const* spellInfo) override;
+
+        void DistancingStarted() override;
+        void DistancingEnded() override;
+
+        MovementGeneratorType GetDefaultMovement() { return m_defaultMovement; }
+
+        bool IsRangedUnit() override { return m_currentRangedMode; }
+        SpellSchoolMask GetMainAttackSchoolMask() const override { return m_currentRangedMode ? m_mainAttackMask : CreatureAI::GetMainAttackSchoolMask(); }
+
+        virtual CanCastResult DoCastSpellIfCan(Unit* target, uint32 spellId, uint32 castFlags = 0) override;
     protected:
-        bool IsTimerBasedEvent(EventAI_Type type) const;
+        std::string GetAIName() override { return "EventAI"; }
+        // Event rules specifiers
+        bool IsTimerExecutedEvent(EventAI_Type type) const;
         bool IsRepeatableEvent(EventAI_Type type) const;
+        bool IsTimerBasedEvent(EventAI_Type type) const;
+        // Event rules specifiers end
+        void DistanceYourself();
 
         uint32 m_EventUpdateTime;                           // Time between event updates
         uint32 m_EventDiff;                                 // Time between the last event call
@@ -770,9 +868,10 @@ class CreatureEventAI : public CreatureAI
         // Variables used by Events themselves
         typedef std::vector<CreatureEventAIHolder> CreatureEventAIList;
         CreatureEventAIList m_CreatureEventAIList;          // Holder for events (stores enabled, time, and eventid)
+        std::vector<std::vector<std::reference_wrapper<CreatureEventAIHolder>>> m_creatureEventAITempList; // Holder for events that are ready to go off
+        uint32 m_depth;
 
         uint8  m_Phase;                                     // Current phase, max 32 phases
-        bool   m_DynamicMovement;                           // Core will control creatures movement if this is enabled
         bool   m_HasOOCLoSEvent;                            // Cache if a OOC-LoS Event exists
         uint32 m_InvinceabilityHpLevel;                     // Minimal health level allowed at damage apply
 
@@ -782,7 +881,19 @@ class CreatureEventAI : public CreatureAI
         uint32 m_throwAIEventStep;                          // Used for damage taken/ received heal
         float m_LastSpellMaxRange;                          // Maximum spell range that was cast during dynamic movement
 
-        Unit* m_eventTarget;                                // Target filled on specific event to be used in action
+        // Caster ai support
+        bool m_rangedMode;
+        RangeModeType m_rangedModeSetting;
+        float m_chaseDistance;
+        bool m_currentRangedMode;
+        std::unordered_set<uint32> m_mainSpells;
+        std::unordered_set<uint32> m_distanceSpells;
+        uint32 m_mainSpellId;
+        uint32 m_mainSpellCost;
+        float m_mainSpellMinRange;
+        SpellSchoolMask m_mainAttackMask;
+
+        MovementGeneratorType m_defaultMovement; // TODO: Extend to all of AI
 };
 
 #endif

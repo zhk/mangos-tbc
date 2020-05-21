@@ -21,7 +21,7 @@ SDComment: Chess AI could use some improvements.
 SDCategory: Karazhan
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "karazhan.h"
 
 enum
@@ -254,7 +254,7 @@ struct npc_echo_of_medivhAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_echo_of_medivh(Creature* pCreature)
+UnitAI* GetAI_npc_echo_of_medivh(Creature* pCreature)
 {
     return new npc_echo_of_medivhAI(pCreature);
 }
@@ -297,11 +297,12 @@ bool GossipSelect_npc_echo_of_medivh(Player* pPlayer, Creature* pCreature, uint3
 ## npc_chess_piece_generic
 ######*/
 
-struct npc_chess_piece_genericAI : public ScriptedAI
+struct npc_chess_piece_genericAI : public Scripted_NoMovementAI
 {
-    npc_chess_piece_genericAI(Creature* pCreature) : ScriptedAI(pCreature)
+    npc_chess_piece_genericAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
     {
         m_pInstance = (instance_karazhan*)pCreature->GetInstanceData();
+        m_creature->SetCanEnterCombat(false); // chess pieces never enter combat
         Reset();
     }
 
@@ -326,8 +327,9 @@ struct npc_chess_piece_genericAI : public ScriptedAI
         // cancel move timer for player faction npcs or for friendly games
         if (m_pInstance)
         {
-            if ((m_pInstance->GetPlayerTeam() == ALLIANCE && m_creature->getFaction() == FACTION_ID_CHESS_ALLIANCE) ||
-                    (m_pInstance->GetPlayerTeam() == HORDE && m_creature->getFaction() == FACTION_ID_CHESS_HORDE) ||
+            // Reason why != is because when player takes control, chess piece gets his faction
+            if ((m_pInstance->GetPlayerTeam() == ALLIANCE && m_creature->getFaction() != FACTION_ID_CHESS_HORDE) ||
+                    (m_pInstance->GetPlayerTeam() == HORDE && m_creature->getFaction() != FACTION_ID_CHESS_ALLIANCE) ||
                     m_pInstance->GetData(TYPE_CHESS) == DONE)
                 m_uiMoveCommandTimer = 0;
         }
@@ -337,16 +339,23 @@ struct npc_chess_piece_genericAI : public ScriptedAI
     void MoveInLineOfSight(Unit* /*pWho*/) override { }
     void AttackStart(Unit* /*pWho*/) override { }
     void EnterEvadeMode() override { }
+    bool CanHandleCharm() override { return true; }
 
     void JustDied(Unit* /*pKiller*/) override
     {
         if (Creature* pSquare = m_creature->GetMap()->GetCreature(m_currentSquareGuid))
             pSquare->RemoveAllAuras();
 
+        if (Unit* player = m_creature->GetCharmer())
+        {
+            player->RemoveAurasDueToSpell(SPELL_CONTROL_PIECE);
+        }
+
         // ToDo: remove corpse after 10 sec
+        m_creature->ForcedDespawn(10000);
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
     {
         // handle move event
         if (eventType == AI_EVENT_CUSTOM_A)
@@ -356,6 +365,7 @@ struct npc_chess_piece_genericAI : public ScriptedAI
                 pSquare->RemoveAllAuras();
 
             m_currentSquareGuid = pInvoker->GetObjectGuid();
+            m_fCurrentOrientation = m_creature->GetOrientation();
             m_uiMoveTimer = 2000;
         }
         // handle encounter start event
@@ -375,6 +385,8 @@ struct npc_chess_piece_genericAI : public ScriptedAI
             pInvoker->CastSpell(pInvoker, SPELL_DISABLE_SQUARE, TRIGGERED_OLD_TRIGGERED);
             pInvoker->CastSpell(pInvoker, SPELL_IS_SQUARE_USED, TRIGGERED_OLD_TRIGGERED);
         }
+        else if (eventType == AI_EVENT_CUSTOM_C)
+            m_fCurrentOrientation = m_creature->GetOrientation();
     }
 
     void MovementInform(uint32 uiMotionType, uint32 uiPointId) override
@@ -386,7 +398,10 @@ struct npc_chess_piece_genericAI : public ScriptedAI
         if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 5.0f))
             DoCastSpellIfCan(pTarget, SPELL_CHANGE_FACING);
         else
+        {
             m_creature->SetFacingTo(m_fCurrentOrientation);
+        }
+            
     }
 
     void SpellHit(Unit* pCaster, const SpellEntry* pSpell) override
@@ -397,7 +412,7 @@ struct npc_chess_piece_genericAI : public ScriptedAI
     }
 
     // Function which returns a random target by type and range
-    Unit* GetTargetByType(uint8 uiType, float fRange, float fArc = M_PI_F)
+    Unit* GetTargetByType(uint8 uiType, float fRange, float fArc = M_PI_F) const
     {
         if (!m_pInstance)
             return nullptr;
@@ -417,7 +432,7 @@ struct npc_chess_piece_genericAI : public ScriptedAI
         for (GuidList::const_iterator itr = lTempList.begin(); itr != lTempList.end(); ++itr)
         {
             Creature* pTemp = m_creature->GetMap()->GetCreature(*itr);
-            if (pTemp && pTemp->isAlive())
+            if (pTemp && pTemp->IsAlive())
             {
                 // check for specified range targets and angle; Note: to be checked if the angle is right
                 if (fRange && !m_creature->isInFrontInMap(pTemp, fRange, fArc))
@@ -438,13 +453,13 @@ struct npc_chess_piece_genericAI : public ScriptedAI
     }
 
     // Function to get a square as close as possible to the enemy
-    Unit* GetMovementSquare()
+    Unit* GetMovementSquare() const
     {
         if (!m_pInstance)
             return nullptr;
 
         // define distance based on the spell radius
-        // this will replace the targeting sysmte of spells SPELL_MOVE_1 and SPELL_MOVE_2
+        // this will replace the targeting sysmte of spells SPELL_MOVE_1 and SPELL_MOVE_2 - HACK
         float fRadius = 10.0f;
         std::list<Creature*> lSquaresList;
 
@@ -463,6 +478,16 @@ struct npc_chess_piece_genericAI : public ScriptedAI
         GetCreatureListWithEntryInGrid(lSquaresList, m_creature, NPC_SQUARE_BLACK, fRadius);
         GetCreatureListWithEntryInGrid(lSquaresList, m_creature, NPC_SQUARE_WHITE, fRadius);
 
+        for (auto itr = lSquaresList.begin(); itr != lSquaresList.end(); )
+        {
+            Creature* square = (*itr);
+            if (square->HasAura(SPELL_IS_SQUARE_USED))
+                itr = lSquaresList.erase(itr);
+            else
+                ++itr;
+        }
+            
+
         if (lSquaresList.empty())
             return nullptr;
 
@@ -474,7 +499,7 @@ struct npc_chess_piece_genericAI : public ScriptedAI
         for (GuidList::const_iterator itr = lTempList.begin(); itr != lTempList.end(); ++itr)
         {
             Creature* pTemp = m_creature->GetMap()->GetCreature(*itr);
-            if (pTemp && pTemp->isAlive())
+            if (pTemp && pTemp->IsAlive())
                 lEnemies.push_back(pTemp);
         }
 
@@ -493,7 +518,7 @@ struct npc_chess_piece_genericAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_pInstance || m_pInstance->GetData(TYPE_CHESS) != IN_PROGRESS)
+        if (!m_pInstance || (m_pInstance->GetData(TYPE_CHESS) != IN_PROGRESS && m_pInstance->GetData(TYPE_CHESS) != SPECIAL))
             return;
 
         // issue move command
@@ -523,11 +548,10 @@ struct npc_chess_piece_genericAI : public ScriptedAI
                         //}
                         //DoCastSpellIfCan(m_creature, uiMoveSpell, CAST_TRIGGERED);
 
-                        // workaround which provides specific move target
-                        if (Unit* pTarget = GetMovementSquare())
-                            DoCastSpellIfCan(pTarget, SPELL_MOVE_GENERIC, CAST_TRIGGERED | CAST_INTERRUPT_PREVIOUS);
-
                         m_fCurrentOrientation = m_creature->GetOrientation();
+                        // workaround which provides specific move target
+                        if (Unit* spellTarget = GetMovementSquare())
+                            spellTarget->CastSpell(m_creature, SPELL_MOVE_TO_SQUARE, TRIGGERED_NONE);
                     }
                 }
 
@@ -566,8 +590,8 @@ struct npc_chess_piece_genericAI : public ScriptedAI
                 m_uiMoveTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-            return;
+        /*if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
+            return;*/
     }
 };
 
@@ -604,14 +628,14 @@ bool EffectDummyCreature_npc_chess_generic(Unit* pCaster, uint32 uiSpellId, Spel
             pCaster->CastSpell(pCaster, SPELL_DISABLE_SQUARE, TRIGGERED_OLD_TRIGGERED);
             pCaster->CastSpell(pCaster, SPELL_IS_SQUARE_USED, TRIGGERED_OLD_TRIGGERED);
 
-            pCreatureTarget->CastSpell(pCreatureTarget, SPELL_MOVE_COOLDOWN, TRIGGERED_OLD_TRIGGERED);
+            pCreatureTarget->CastSpell(pCreatureTarget, SPELL_MOVE_COOLDOWN, TRIGGERED_NONE);
             pCreatureTarget->AI()->SendAIEvent(AI_EVENT_CUSTOM_A, pCaster, pCreatureTarget);
         }
 
         return true;
     }
     // generic melee tick
-    else if (uiSpellId == SPELL_ACTION_MELEE && uiEffIndex == EFFECT_INDEX_0)
+    if (uiSpellId == SPELL_ACTION_MELEE && uiEffIndex == EFFECT_INDEX_0)
     {
         uint32 uiMeleeSpell = 0;
 
@@ -630,15 +654,19 @@ bool EffectDummyCreature_npc_chess_generic(Unit* pCaster, uint32 uiSpellId, Spel
             case NPC_ORC_WOLF:              uiMeleeSpell = SPELL_MELEE_WOLF;                break;
             case NPC_SUMMONED_DAEMON:       uiMeleeSpell = SPELL_MELEE_DAEMON;              break;
         }
-
+        
         pCreatureTarget->CastSpell(pCreatureTarget, uiMeleeSpell, TRIGGERED_OLD_TRIGGERED);
         return true;
     }
-    // square facing
-    else if (uiSpellId == SPELL_FACE_SQUARE && uiEffIndex == EFFECT_INDEX_0)
+        // square facing
+    if (uiSpellId == SPELL_FACE_SQUARE && uiEffIndex == EFFECT_INDEX_0)
     {
         if (pCaster->GetTypeId() == TYPEID_UNIT)
+        {
+            pCreatureTarget->SetInFront(pCaster);         // set movementinfo orientation, needed for next movement if any
             pCreatureTarget->SetFacingToObject(pCaster);
+            pCreatureTarget->AI()->SendAIEvent(AI_EVENT_CUSTOM_C, pCaster, pCreatureTarget);
+        }
 
         return true;
     }
@@ -660,9 +688,9 @@ struct npc_king_llaneAI : public npc_chess_piece_genericAI
 
     bool m_bIsAttacked;
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* doneBy, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (!uiDamage || !m_bIsAttacked || !m_pInstance || pDoneBy->GetTypeId() != TYPEID_UNIT)
+        if (!damage || !m_bIsAttacked || !m_pInstance || doneBy->GetTypeId() != TYPEID_UNIT)
             return;
 
         if (Creature* pMedivh = m_pInstance->GetSingleCreatureFromStorage(NPC_ECHO_MEDIVH))
@@ -710,7 +738,7 @@ struct npc_king_llaneAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 20.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 20.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_HEROISM);
 
@@ -724,7 +752,7 @@ struct npc_king_llaneAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 10.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 10.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_SWEEP);
 
@@ -737,7 +765,7 @@ struct npc_king_llaneAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_king_llane(Creature* pCreature)
+UnitAI* GetAI_npc_king_llane(Creature* pCreature)
 {
     return new npc_king_llaneAI(pCreature);
 }
@@ -771,9 +799,9 @@ struct npc_warchief_blackhandAI : public npc_chess_piece_genericAI
 
     bool m_bIsAttacked;
 
-    void DamageTaken(Unit* pDoneBy, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* doneBy, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (!uiDamage || !m_bIsAttacked || !m_pInstance || pDoneBy->GetTypeId() != TYPEID_UNIT)
+        if (!damage || !m_bIsAttacked || !m_pInstance || doneBy->GetTypeId() != TYPEID_UNIT)
             return;
 
         if (Creature* pMedivh = m_pInstance->GetSingleCreatureFromStorage(NPC_ECHO_MEDIVH))
@@ -817,11 +845,13 @@ struct npc_warchief_blackhandAI : public npc_chess_piece_genericAI
         }
 
         m_pInstance->DoMoveChessPieceToSides(SPELL_TRANSFORM_BLACKHAND, FACTION_ID_CHESS_HORDE, true);
+
+        m_creature->ForcedDespawn(10000);
     }
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 20.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 20.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_BLOODLUST);
 
@@ -835,7 +865,7 @@ struct npc_warchief_blackhandAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 10.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 10.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_CLEAVE);
 
@@ -848,7 +878,7 @@ struct npc_warchief_blackhandAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_warchief_blackhand(Creature* pCreature)
+UnitAI* GetAI_npc_warchief_blackhand(Creature* pCreature)
 {
     return new npc_warchief_blackhandAI(pCreature);
 }
@@ -924,7 +954,7 @@ struct npc_human_conjurerAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_human_conjurer(Creature* pCreature)
+UnitAI* GetAI_npc_human_conjurer(Creature* pCreature)
 {
     return new npc_human_conjurerAI(pCreature);
 }
@@ -1000,7 +1030,7 @@ struct npc_orc_warlockAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_orc_warlock(Creature* pCreature)
+UnitAI* GetAI_npc_orc_warlock(Creature* pCreature)
 {
     return new npc_orc_warlockAI(pCreature);
 }
@@ -1063,7 +1093,7 @@ struct npc_human_footmanAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_HEROIC_BLOW);
 
@@ -1077,7 +1107,7 @@ struct npc_human_footmanAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 8.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 8.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_SHIELD_BLOCK);
 
@@ -1090,7 +1120,7 @@ struct npc_human_footmanAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_human_footman(Creature* pCreature)
+UnitAI* GetAI_npc_human_footman(Creature* pCreature)
 {
     return new npc_human_footmanAI(pCreature);
 }
@@ -1153,7 +1183,7 @@ struct npc_orc_gruntAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_VICIOUS_STRIKE);
 
@@ -1167,7 +1197,7 @@ struct npc_orc_gruntAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 8.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 8.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_WEAPON_DEFLECTION);
 
@@ -1180,7 +1210,7 @@ struct npc_orc_gruntAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_orc_grunt(Creature* pCreature)
+UnitAI* GetAI_npc_orc_grunt(Creature* pCreature)
 {
     return new npc_orc_gruntAI(pCreature);
 }
@@ -1229,7 +1259,7 @@ struct npc_water_elementalAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_GEYSER);
 
@@ -1243,7 +1273,7 @@ struct npc_water_elementalAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_WATER_SHIELD);
 
@@ -1256,7 +1286,7 @@ struct npc_water_elementalAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_water_elemental(Creature* pCreature)
+UnitAI* GetAI_npc_water_elemental(Creature* pCreature)
 {
     return new npc_water_elementalAI(pCreature);
 }
@@ -1305,7 +1335,7 @@ struct npc_summoned_daemonAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_HELLFIRE);
 
@@ -1319,7 +1349,7 @@ struct npc_summoned_daemonAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 9.0f))
         {
             DoCastSpellIfCan(m_creature, SPELL_FIRE_SHIELD);
 
@@ -1332,7 +1362,7 @@ struct npc_summoned_daemonAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_summoned_daemon(Creature* pCreature)
+UnitAI* GetAI_npc_summoned_daemon(Creature* pCreature)
 {
     return new npc_summoned_daemonAI(pCreature);
 }
@@ -1381,7 +1411,7 @@ struct npc_human_chargerAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_SMASH);
 
@@ -1395,7 +1425,7 @@ struct npc_human_chargerAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 10.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 10.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_STOMP);
 
@@ -1408,7 +1438,7 @@ struct npc_human_chargerAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_human_charger(Creature* pCreature)
+UnitAI* GetAI_npc_human_charger(Creature* pCreature)
 {
     return new npc_human_chargerAI(pCreature);
 }
@@ -1457,7 +1487,7 @@ struct npc_orc_wolfAI : public npc_chess_piece_genericAI
 
     uint32 DoCastPrimarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 8.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_BITE);
 
@@ -1471,7 +1501,7 @@ struct npc_orc_wolfAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 10.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 10.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_HOWL);
 
@@ -1484,7 +1514,7 @@ struct npc_orc_wolfAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_orc_wolf(Creature* pCreature)
+UnitAI* GetAI_npc_orc_wolf(Creature* pCreature)
 {
     return new npc_orc_wolfAI(pCreature);
 }
@@ -1547,7 +1577,7 @@ struct npc_human_clericAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 18.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 18.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_HOLY_LANCE);
 
@@ -1560,7 +1590,7 @@ struct npc_human_clericAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_human_cleric(Creature* pCreature)
+UnitAI* GetAI_npc_human_cleric(Creature* pCreature)
 {
     return new npc_human_clericAI(pCreature);
 }
@@ -1623,7 +1653,7 @@ struct npc_orc_necrolyteAI : public npc_chess_piece_genericAI
 
     uint32 DoCastSecondarySpell() override
     {
-        if (Unit* pTarget = GetTargetByType(TARGET_TYPE_RANDOM, 18.0f, M_PI_F / 12))
+        if (GetTargetByType(TARGET_TYPE_RANDOM, 18.0f, M_PI_F / 12))
         {
             DoCastSpellIfCan(m_creature, SPELL_SHADOW_SPEAR);
 
@@ -1636,7 +1666,7 @@ struct npc_orc_necrolyteAI : public npc_chess_piece_genericAI
     }
 };
 
-CreatureAI* GetAI_npc_orc_necrolyte(Creature* pCreature)
+UnitAI* GetAI_npc_orc_necrolyte(Creature* pCreature)
 {
     return new npc_orc_necrolyteAI(pCreature);
 }
@@ -1656,11 +1686,103 @@ bool GossipHello_npc_orc_necrolyte(Player* pPlayer, Creature* pCreature)
     return true;
 }
 
+struct go_chessboard : public GameObjectAI
+{
+    go_chessboard(GameObject* go) : GameObjectAI(go), m_auraSearchTimer(1000), m_spellInfo(sSpellTemplate.LookupEntry<SpellEntry>(SPELL_GAME_IN_SESSION)), m_started(false) {}
+
+    uint32 m_auraSearchTimer;
+    SpellEntry const* m_spellInfo;
+    bool m_started;
+
+    void ReceiveAIEvent(AIEventType eventType, uint32 miscValue = 0) override
+    {
+        if (eventType == AI_EVENT_CUSTOM_A)
+            ChangeState(bool(miscValue));
+    }
+
+    void ChangeState(bool apply)
+    {
+        m_started = apply;
+        if (apply)
+            CheckAndApplyAura();
+        else
+        {
+            for (auto& ref : m_go->GetMap()->GetPlayers())
+            {
+                Player* player = ref.getSource();
+                auto bounds = player->GetSpellAuraHolderBounds(m_spellInfo->Id);
+                SpellAuraHolder* myHolder = nullptr;
+                for (auto itr = bounds.first; itr != bounds.second; ++itr)
+                {
+                    SpellAuraHolder* holder = (*itr).second;
+                    if (holder->GetCasterGuid() == m_go->GetObjectGuid())
+                    {
+                        myHolder = holder;
+                        break;
+                    }
+                }
+                player->RemoveSpellAuraHolder(myHolder);
+            }
+        }
+    }
+
+    void CheckAndApplyAura()
+    {
+        for (auto& ref : m_go->GetMap()->GetPlayers())
+        {
+            Player* player = ref.getSource();
+            float x, y, z;
+            m_go->GetPosition(x, y, z);
+            auto bounds = player->GetSpellAuraHolderBounds(m_spellInfo->Id);
+            SpellAuraHolder* myHolder = nullptr;
+            for (auto itr = bounds.first; itr != bounds.second; ++itr)
+            {
+                SpellAuraHolder* holder = (*itr).second;
+                if (holder->GetCasterGuid() == m_go->GetObjectGuid())
+                {
+                    myHolder = holder;
+                    break;
+                }
+            }
+            bool isCloseEnough = player->GetDistance(x, y, z, DIST_CALC_COMBAT_REACH) < GetSpellRadius(sSpellRadiusStore.LookupEntry(m_spellInfo->EffectRadiusIndex[EFFECT_INDEX_0]));
+            if (!myHolder)
+            {
+                if (isCloseEnough)
+                {
+                    myHolder = CreateSpellAuraHolder(m_spellInfo, player, m_go);
+                    GameObjectAura* Aur = new GameObjectAura(m_spellInfo, EFFECT_INDEX_0, nullptr, nullptr, myHolder, player, m_go);
+                    myHolder->AddAura(Aur, EFFECT_INDEX_0);
+                    if (!player->AddSpellAuraHolder(myHolder))
+                        delete myHolder;
+                }
+            }
+            else if (!isCloseEnough)
+                player->RemoveSpellAuraHolder(myHolder);
+        }
+    }
+
+    void UpdateAI(const uint32 diff) override
+    {
+        if (!m_started)
+            return;
+
+        if (m_auraSearchTimer <= diff)
+        {
+            m_auraSearchTimer = 1000;
+            CheckAndApplyAura();
+        }
+        else m_auraSearchTimer -= diff;
+    }
+};
+
+GameObjectAI* GetGOAI_go_chessboard(GameObject* go)
+{
+    return new go_chessboard(go);
+}
+
 void AddSC_chess_event()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_echo_of_medivh";
     pNewScript->GetAI = GetAI_npc_echo_of_medivh;
     pNewScript->pGossipHello = GossipHello_npc_echo_of_medivh;
@@ -1761,5 +1883,10 @@ void AddSC_chess_event()
     pNewScript->pGossipHello = GossipHello_npc_orc_necrolyte;
     pNewScript->pGossipSelect = GossipSelect_npc_chess_generic;
     pNewScript->pEffectDummyNPC = &EffectDummyCreature_npc_chess_generic;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "go_chessboard";
+    pNewScript->GetGameObjectAI = &GetGOAI_go_chessboard;
     pNewScript->RegisterSelf();
 }

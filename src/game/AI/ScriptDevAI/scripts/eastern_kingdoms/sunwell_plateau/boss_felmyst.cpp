@@ -21,7 +21,7 @@ SDComment: Intro movement NYI; Event cleanup (despawn & resummon) NYI; Breath ph
 SDCategory: Sunwell Plateau
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "sunwell_plateau.h"
 #include "Entities/TemporarySpawn.h"
 
@@ -155,7 +155,6 @@ struct boss_felmystAI : public ScriptedAI
     void EnterEvadeMode() override
     {
         m_creature->RemoveAllAurasOnEvade();
-        m_creature->DeleteThreatList();
         m_creature->CombatStop(true);
 
         // Add the visual aura back when evading - workaround because there is no way to remove only the negative auras
@@ -165,7 +164,7 @@ struct boss_felmystAI : public ScriptedAI
         DoCastSpellIfCan(m_creature, SPELL_SOUL_SEVER, CAST_TRIGGERED);
 
         // Fly back to the home flight location
-        if (m_creature->isAlive())
+        if (m_creature->IsAlive())
         {
             float fX, fY, fZ;
             m_creature->SetLevitate(true);
@@ -240,7 +239,7 @@ struct boss_felmystAI : public ScriptedAI
                 {
                     m_uiPhase = PHASE_TRANSITION;
                     float fGroundZ = m_creature->GetMap()->GetHeight(m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ());
-                    m_creature->GetMotionMaster()->MovePoint(PHASE_TRANSITION, m_creature->getVictim()->GetPositionX(), m_creature->getVictim()->GetPositionY(), fGroundZ, false);
+                    m_creature->GetMotionMaster()->MovePoint(PHASE_TRANSITION, m_creature->GetVictim()->GetPositionX(), m_creature->GetVictim()->GetPositionY(), fGroundZ, false);
                     return;
                 }
 
@@ -280,9 +279,10 @@ struct boss_felmystAI : public ScriptedAI
             case PHASE_TRANSITION:
                 // switch back to ground combat from flight transition
                 m_uiPhase = PHASE_GROUND;
+                SetDeathPrevention(false);
                 SetCombatMovement(true);
                 m_creature->SetLevitate(false);
-                DoStartMovement(m_creature->getVictim());
+                DoStartMovement(m_creature->GetVictim());
                 break;
         }
     }
@@ -307,7 +307,7 @@ struct boss_felmystAI : public ScriptedAI
                 m_uiMovementTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiBerserkTimer)
@@ -330,7 +330,7 @@ struct boss_felmystAI : public ScriptedAI
 
                 if (m_uiCleaveTimer < uiDiff)
                 {
-                    if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE) == CAST_OK)
+                    if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CLEAVE) == CAST_OK)
                         m_uiCleaveTimer = urand(2000, 5000);
                 }
                 else
@@ -338,7 +338,7 @@ struct boss_felmystAI : public ScriptedAI
 
                 if (m_uiCorrosionTimer < uiDiff)
                 {
-                    if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CORROSION) == CAST_OK)
+                    if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CORROSION) == CAST_OK)
                     {
                         DoScriptText(SAY_BREATH, m_creature);
                         m_uiCorrosionTimer = 30000;
@@ -357,7 +357,7 @@ struct boss_felmystAI : public ScriptedAI
 
                 if (m_uiEncapsulateTimer < uiDiff)
                 {
-                    if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+                    if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
                     {
                         if (DoCastSpellIfCan(pTarget, SPELL_ENCAPSULATE_CHANNEL) == CAST_OK)
                             m_uiEncapsulateTimer = urand(30000, 40000);
@@ -374,6 +374,7 @@ struct boss_felmystAI : public ScriptedAI
                     m_creature->SetLevitate(true);
                     m_creature->GetMotionMaster()->MoveIdle();
                     m_creature->GetMotionMaster()->MovePoint(PHASE_AIR, m_creature->GetPositionX(), m_creature->GetPositionY(), 50.083f, false);
+                    SetDeathPrevention(true);
 
                     m_uiPhase = PHASE_TRANSITION;
                     m_uiSubPhase = SUBPHASE_VAPOR;
@@ -402,7 +403,7 @@ struct boss_felmystAI : public ScriptedAI
                                     return;
 
                                 // select the side on which we want to fly
-                                m_bIsLeftSide = urand(0, 1) ? true : false;
+                                m_bIsLeftSide = urand(0, 1) != 0;
                                 m_uiCorruptionCount = 0;
                                 m_uiSubPhase = SUBPHASE_BREATH_PREPARE;
                                 if (Creature* pTrigger = m_pInstance->GetSingleCreatureFromStorage(m_bIsLeftSide ? NPC_FLIGHT_TRIGGER_LEFT : NPC_FLIGHT_TRIGGER_RIGHT))
@@ -455,7 +456,7 @@ struct boss_felmystAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_felmyst(Creature* pCreature)
+UnitAI* GetAI_boss_felmyst(Creature* pCreature)
 {
     return new boss_felmystAI(pCreature);
 }
@@ -489,16 +490,14 @@ struct npc_demonic_vaporAI : public ScriptedAI
     void UpdateAI(const uint32 /*uiDiff*/) override { }
 };
 
-CreatureAI* GetAI_npc_demonic_vapor(Creature* pCreature)
+UnitAI* GetAI_npc_demonic_vapor(Creature* pCreature)
 {
     return new npc_demonic_vaporAI(pCreature);
 }
 
 void AddSC_boss_felmyst()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_felmyst";
     pNewScript->GetAI = &GetAI_boss_felmyst;
     pNewScript->RegisterSelf();

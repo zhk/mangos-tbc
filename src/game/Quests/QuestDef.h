@@ -43,11 +43,13 @@ enum QuestFailedReasons
 {
     INVALIDREASON_DONT_HAVE_REQ                       = 0,  // this is default case
     INVALIDREASON_QUEST_FAILED_LOW_LEVEL              = 1,  // You are not high enough level for that quest.
+    INVALIDREASON_QUEST_FAILED_INVENTORY_FULL         = 4,  // Inventory is full
     INVALIDREASON_QUEST_FAILED_WRONG_RACE             = 6,  // That quest is not available to your race.
     INVALIDREASON_QUEST_ALREADY_DONE                  = 7,  // You have completed that quest.
     INVALIDREASON_QUEST_ONLY_ONE_TIMED                = 12, // You can only be on one timed quest at a time.
     INVALIDREASON_QUEST_ALREADY_ON                    = 13, // You are already on that quest.
     INVALIDREASON_QUEST_FAILED_EXPANSION              = 16, // This quest requires an expansion enabled account.
+    INVALIDREASON_QUEST_FAILED_DUPLICATE_ITEM         = 17, // Duplicate item found.
     INVALIDREASON_QUEST_ALREADY_ON2                   = 18, // You are already on that quest.
     INVALIDREASON_QUEST_FAILED_MISSING_ITEMS          = 21, // You don't have the required items with you. Check storage.
     INVALIDREASON_QUEST_FAILED_NOT_ENOUGH_MONEY       = 23, // You don't have enough money for that quest.
@@ -240,17 +242,19 @@ class Quest
         float  GetPointY() const { return PointY; }
         uint32 GetPointOpt() const { return PointOpt; }
         uint32 GetIncompleteEmote() const { return IncompleteEmote; }
+        uint32 GetIncompleteEmoteDelay() const { return IncompleteEmoteDelay; }
         uint32 GetCompleteEmote() const { return CompleteEmote; }
+        uint32 GetCompleteEmoteDelay() const { return CompleteEmoteDelay; }
         uint32 GetDetailsEmoteCount() const { return m_detailsemotecount; }
         uint32 GetQuestStartScript() const { return QuestStartScript; }
         uint32 GetQuestCompleteScript() const { return QuestCompleteScript; }
 
-        bool   IsRepeatable() const { return !!(m_SpecialFlags & QUEST_SPECIAL_FLAG_REPEATABLE); }
+        bool   IsRepeatable() const { return (m_SpecialFlags & QUEST_SPECIAL_FLAG_REPEATABLE) != 0; }
         bool   IsAutoComplete() const { return !QuestMethod; }
-        bool   IsDaily() const { return !!(m_QuestFlags & QUEST_FLAGS_DAILY); }
-        bool   IsWeekly() const { return !!(m_QuestFlags & QUEST_FLAGS_WEEKLY); }
-        bool   IsMonthly() const { return !!(m_SpecialFlags & QUEST_SPECIAL_FLAG_MONTHLY); }
-        bool   IsDailyOrWeekly() const { return !!(m_QuestFlags & (QUEST_FLAGS_DAILY | QUEST_FLAGS_WEEKLY)); }
+        bool   IsDaily() const { return (m_QuestFlags & QUEST_FLAGS_DAILY) != 0; }
+        bool   IsWeekly() const { return (m_QuestFlags & QUEST_FLAGS_WEEKLY) != 0; }
+        bool   IsMonthly() const { return (m_SpecialFlags & QUEST_SPECIAL_FLAG_MONTHLY) != 0; }
+        bool   IsDailyOrWeekly() const { return (m_QuestFlags & (QUEST_FLAGS_DAILY | QUEST_FLAGS_WEEKLY)) != 0; }
         bool   IsAllowedInRaid() const;
 
         // quest can be fully deactivated and will not be available for any player
@@ -347,7 +351,9 @@ class Quest
         float  PointY;
         uint32 PointOpt;
         uint32 IncompleteEmote;
+        uint32 IncompleteEmoteDelay;
         uint32 CompleteEmote;
+        uint32 CompleteEmoteDelay;
         uint32 QuestStartScript;
         uint32 QuestCompleteScript;
 };

@@ -26,6 +26,7 @@
 #include "Common.h"
 #include "Auth/BigNumber.h"
 #include "Auth/Sha1.h"
+#include "SRP6/SRP6.h"
 #include "ByteBuffer.h"
 
 #include "Network/Socket.hpp"
@@ -47,6 +48,7 @@ class AuthSocket : public MaNGOS::Socket
         void LoadRealmlist(ByteBuffer& pkt, uint32 acctid);
         int32 generateToken(char const* b32key);
 
+        bool VerifyVersion(uint8 const* a, int32 aLength, uint8 const* versionProof, bool isReconnect);
         bool _HandleLogonChallenge();
         bool _HandleLogonProof();
         bool _HandleReconnectChallenge();
@@ -57,8 +59,6 @@ class AuthSocket : public MaNGOS::Socket
         bool _HandleXferResume();
         bool _HandleXferCancel();
         bool _HandleXferAccept();
-
-        void _SetVSFields(const std::string& rI);
 
     private:
         enum eStatus
@@ -71,9 +71,7 @@ class AuthSocket : public MaNGOS::Socket
             STATUS_CLOSED
         };
 
-        BigNumber N, s, g, v;
-        BigNumber b, B;
-        BigNumber K;
+        SRP6 srp;
         BigNumber _reconnectProof;
 
         eStatus _status;
@@ -81,6 +79,7 @@ class AuthSocket : public MaNGOS::Socket
         std::string _login;
         std::string _safelogin;
         std::string _token;
+        std::string m_os;
 
         // Since GetLocaleByName() is _NOT_ bijective, we have to store the locale as a string. Otherwise we can't differ
         // between enUS and enGB, which is important for the patch system

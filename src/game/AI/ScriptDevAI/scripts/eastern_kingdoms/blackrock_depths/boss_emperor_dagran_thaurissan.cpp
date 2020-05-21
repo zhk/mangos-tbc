@@ -21,7 +21,7 @@ SDComment: With script for Moria
 SDCategory: Blackrock Depths
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "blackrock_depths.h"
 
 enum eEmperor
@@ -57,14 +57,12 @@ struct boss_emperor_dagran_thaurissanAI : public ScriptedAI
 
     void Aggro(Unit* /*pWho*/) override
     {
-        uint32 uiTextId;
         switch (urand(0, 2))
         {
-            case 0: uiTextId = YELL_AGGRO_1; break;
-            case 1: uiTextId = YELL_AGGRO_2; break;
-            case 2: uiTextId = YELL_AGGRO_3; break;
+            case 0: DoScriptText(YELL_AGGRO_1, m_creature); break;
+            case 1: DoScriptText(YELL_AGGRO_2, m_creature); break;
+            case 2: DoScriptText(YELL_AGGRO_3, m_creature); break;
         }
-        DoScriptText(uiTextId, m_creature);
         m_creature->CallForHelp(VISIBLE_RANGE);
     }
 
@@ -79,7 +77,7 @@ struct boss_emperor_dagran_thaurissanAI : public ScriptedAI
             if (pPrincess->GetEntry() != NPC_PRINCESS)
                 return;
 
-            if (pPrincess->isAlive())
+            if (pPrincess->IsAlive())
             {
                 pPrincess->SetFactionTemporary(FACTION_NEUTRAL, TEMPFACTION_NONE);
                 pPrincess->AI()->EnterEvadeMode();
@@ -94,7 +92,7 @@ struct boss_emperor_dagran_thaurissanAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiHandOfThaurissanTimer < uiDiff)
@@ -111,7 +109,7 @@ struct boss_emperor_dagran_thaurissanAI : public ScriptedAI
         // AvatarOfFlame_Timer
         if (m_uiAvatarOfFlameTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_AVATAROFFLAME) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_AVATAROFFLAME) == CAST_OK)
                 m_uiAvatarOfFlameTimer = 18000;
         }
         else
@@ -121,7 +119,7 @@ struct boss_emperor_dagran_thaurissanAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_emperor_dagran_thaurissan(Creature* pCreature)
+UnitAI* GetAI_boss_emperor_dagran_thaurissan(Creature* pCreature)
 {
     return new boss_emperor_dagran_thaurissanAI(pCreature);
 }
@@ -163,18 +161,9 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
         m_uiMindBlastTimer      = 16000;
         m_uiShadowWordPainTimer = 2000;
         m_uiSmiteTimer          = 8000;
-    }
 
-    void AttackStart(Unit* pWho) override
-    {
-        if (m_creature->Attack(pWho, false))
-        {
-            m_creature->AddThreat(pWho);
-            m_creature->SetInCombatWith(pWho);
-            pWho->SetInCombatWith(m_creature);
-
-            m_creature->GetMotionMaster()->MoveChase(pWho, 25.0f);
-        }
+        m_attackDistance = 25.0f;
+        m_meleeEnabled = false;
     }
 
     void JustReachedHome() override
@@ -184,7 +173,7 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
             if (Creature* pEmperor = m_pInstance->GetSingleCreatureFromStorage(NPC_EMPEROR))
             {
                 // if evade, then check if he is alive. If not, start make portal
-                if (!pEmperor->isAlive())
+                if (!pEmperor->IsAlive())
                     DoCastSpellIfCan(m_creature, SPELL_OPEN_PORTAL);
             }
         }
@@ -193,13 +182,13 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // MindBlast_Timer
         if (m_uiMindBlastTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_MINDBLAST) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_MINDBLAST) == CAST_OK)
                 m_uiMindBlastTimer = 14000;
         }
         else
@@ -208,7 +197,7 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
         // ShadowWordPain_Timer
         if (m_uiShadowWordPainTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHADOWWORDPAIN) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SHADOWWORDPAIN) == CAST_OK)
                 m_uiShadowWordPainTimer = 18000;
         }
         else
@@ -217,7 +206,7 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
         // Smite_Timer
         if (m_uiSmiteTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SMITE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SMITE) == CAST_OK)
                 m_uiSmiteTimer = 10000;
         }
         else
@@ -228,7 +217,7 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
         {
             if (Creature* pEmperor = m_pInstance->GetSingleCreatureFromStorage(NPC_EMPEROR))
             {
-                if (pEmperor->isAlive() && pEmperor->GetHealthPercent() != 100.0f)
+                if (pEmperor->IsAlive() && pEmperor->GetHealthPercent() != 100.0f)
                 {
                     if (DoCastSpellIfCan(pEmperor, SPELL_HEAL) == CAST_OK)
                         m_uiHealTimer = 10000;
@@ -242,16 +231,14 @@ struct boss_moira_bronzebeardAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_moira_bronzebeard(Creature* pCreature)
+UnitAI* GetAI_boss_moira_bronzebeard(Creature* pCreature)
 {
     return new boss_moira_bronzebeardAI(pCreature);
 }
 
 void AddSC_boss_draganthaurissan()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_emperor_dagran_thaurissan";
     pNewScript->GetAI = &GetAI_boss_emperor_dagran_thaurissan;
     pNewScript->RegisterSelf();

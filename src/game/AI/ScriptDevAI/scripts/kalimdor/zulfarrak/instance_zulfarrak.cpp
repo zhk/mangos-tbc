@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Zul'Farrak
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "zulfarrak.h"
 
 instance_zulfarrak::instance_zulfarrak(Map* pMap) : ScriptedInstance(pMap),
@@ -128,10 +128,10 @@ void instance_zulfarrak::Load(const char* chrIn)
                >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6] >> m_auiEncounter[7]
                >> m_auiEncounter[8];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -213,7 +213,7 @@ void instance_zulfarrak::Update(uint32 uiDiff)
             if (Creature* pTroll = instance->GetCreature(selectedGuid))
             {
                 // Pick another one if already in combat or already killed
-                if (pTroll->getVictim() || !pTroll->isAlive())
+                if (pTroll->GetVictim() || !pTroll->IsAlive())
                 {
                     m_uiPyramidEventTimer = urand(0, 2) ? urand(3000, 10000) : 1000;
                     return;
@@ -223,7 +223,7 @@ void instance_zulfarrak::Update(uint32 uiDiff)
                 if (Creature* pBly = GetSingleCreatureFromStorage(NPC_SERGEANT_BLY))
                 {
                     // ToDo: research if there is anything special if these guys die
-                    if (!pBly->isAlive())
+                    if (!pBly->IsAlive())
                     {
                         m_uiPyramidEventTimer = 0;
                         return;
@@ -248,9 +248,7 @@ InstanceData* GetInstanceData_instance_zulfarrak(Map* pMap)
 
 void AddSC_instance_zulfarrak()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_zulfarrak";
     pNewScript->GetInstanceData = &GetInstanceData_instance_zulfarrak;
     pNewScript->RegisterSelf();

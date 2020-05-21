@@ -53,8 +53,7 @@ struct AreaTableEntry
     char*   area_name[16];                                  // 11-26    m_AreaName_lang
     // 27 string flags
     uint32  team;                                           // 28       m_factionGroupMask
-    uint32  LiquidTypeOverride;                             // 29       m_liquidTypeID override for water type
-    // 30-32    uknown/unused
+    uint32  LiquidTypeOverride[4];                          // 29-32    m_liquidTypeID[4]
     // 33       m_minElevation
     // 34       m_ambient_multiplier
 };
@@ -202,28 +201,26 @@ struct ChrRacesEntry
     uint32      expansion;                                  // 68       m_required_expansion
 };
 
-/*struct CinematicCameraEntry
+struct CinematicCameraEntry
 {
-    uint32      id;                                         // 0        m_ID
-    char*       filename;                                   // 1        m_model
-    uint32      soundid;                                    // 2        m_soundID
-    float       start_x;                                    // 3        m_originX
-    float       start_y;                                    // 4        m_originY
-    float       start_z;                                    // 5        m_originZ
-    float       unk6;                                       // 6        m_originFacing
-};*/
+    uint32 ID;                                               // 0
+    char const* Model;                                       // 1    Model filename (translate .mdx to .m2)
+    uint32 SoundID;                                          // 2    Sound ID       (voiceover for cinematic)
+    DBCPosition3D Origin;                                    // 3-5  Position in map used for basis for M2 co-ordinates
+    float OriginFacing;                                      // 4    Orientation in map used for basis for M2 co-ordinates
+};
 
 struct CinematicSequencesEntry
 {
     uint32      Id;                                         // 0        m_ID
     // uint32      unk1;                                    // 1        m_soundID
-    // uint32      cinematicCamera;                         // 2        m_camera[8]
+    uint32      cinematicCamera;                            // 2        m_camera[8]
 };
 
 struct CreatureDisplayInfoEntry
 {
     uint32      Displayid;                                  // 0        m_ID
-    // 1        m_modelID
+    uint32      ModelId;                                    // 1        
     // 2        m_soundID
     uint32      ExtendedDisplayInfoID;                      // 3        m_extendedDisplayInfoID -> CreatureDisplayInfoExtraEntry::DisplayExtraId
     float       scale;                                      // 4        m_creatureModelScale
@@ -263,6 +260,28 @@ struct CreatureFamilyEntry
     char*     Name[16];                                     // 8-23
     // 24 string flags, unused
     // 25 icon, unused
+};
+
+struct CreatureModelDataEntry
+{
+    uint32 Id;
+    uint32 Flags;
+    //char* ModelPath;
+    //uint32 Unk1;
+    float Scale;                                             // Used in calculation of unit collision data
+    //int32 Unk2
+    //int32 Unk3
+    //uint32 Unk4
+    //uint32 Unk5
+    //float Unk6
+    //uint32 Unk7
+    //float Unk8
+    //uint32 Unk9
+    //uint32 Unk10
+    //float CollisionWidth;
+    float CollisionHeight;
+    float MountHeight;                                       // Used in calculation of unit collision data when mounted
+    //float Unks[7] wotlk has 11
 };
 
 #define MAX_CREATURE_SPELL_DATA_SLOT 4
@@ -334,10 +353,14 @@ struct FactionEntry
     int32       BaseRepValue[4];                            // 10-13    m_reputationBase
     uint32      ReputationFlags[4];                         // 14-17    m_reputationFlags
     uint32      team;                                       // 18       m_parentFactionID
-    char*       name[16];                                   // 19-34    m_name_lang
-    // 35 string flags
-    // char*     description[16];                           // 36-51    m_description_lang
-    // 52 string flags
+    float       spilloverRateIn;                            // 19       m_parentFactionMod[2] Faction gains incoming rep * spilloverRateIn
+    float       spilloverRateOut;                           // 20       Faction outputs rep * spilloverRateOut as spillover reputation
+    uint32      spilloverMaxRankIn;                         // 21       m_parentFactionCap[2] The highest rank the faction will profit from incoming spillover
+    uint32      spilloverRank_unk;                          // 22       It does not seem to be the max standing at which a faction outputs spillover ...so no idea
+    char*       name[16];                                   // 23-38    m_name_lang
+    // 39 string flags
+    // char*     description[16];                           // 40-55    m_description_lang
+    // 56 string flags
 
     // helpers
 
@@ -384,11 +407,11 @@ struct FactionTemplateEntry
     {
         if (entry.faction)
         {
-            for (int i = 0; i < 4; ++i)
-                if (enemyFaction[i]  == entry.faction)
+            for (unsigned int i : enemyFaction)
+                if (i == entry.faction)
                     return false;
-            for (int i = 0; i < 4; ++i)
-                if (friendFaction[i] == entry.faction)
+            for (unsigned int i : friendFaction)
+                if (i == entry.faction)
                     return true;
         }
         return (friendGroupMask & entry.factionGroupMask) || (factionGroupMask & entry.friendGroupMask);
@@ -397,11 +420,11 @@ struct FactionTemplateEntry
     {
         if (entry.faction)
         {
-            for (int i = 0; i < 4; ++i)
-                if (enemyFaction[i]  == entry.faction)
+            for (unsigned int i : enemyFaction)
+                if (i == entry.faction)
                     return true;
-            for (int i = 0; i < 4; ++i)
-                if (friendFaction[i] == entry.faction)
+            for (unsigned int i : friendFaction)
+                if (i == entry.faction)
                     return false;
         }
         return (enemyGroupMask & entry.factionGroupMask) != 0;
@@ -409,8 +432,8 @@ struct FactionTemplateEntry
     bool IsHostileToPlayers() const { return (enemyGroupMask & FACTION_GROUP_MASK_PLAYER) != 0; }
     bool IsNeutralToAll() const
     {
-        for (int i = 0; i < 4; ++i)
-            if (enemyFaction[i] != 0)
+        for (unsigned int i : enemyFaction)
+            if (i != 0)
                 return false;
         return enemyGroupMask == 0 && friendGroupMask == 0;
     }
@@ -422,12 +445,12 @@ struct GameObjectDisplayInfoEntry
     uint32 Displayid;                                       // 0 m_ID
     char* filename;                                         // 1 m_modelName
     // uint32 unknown2[10];                                 // 2-11 m_Sound
-    float geoBoxMinX;                                       // 12 m_geoBoxMinX (use first value as interact dist, mostly in hacks way)
-    float geoBoxMinY;                                       // 13 m_geoBoxMinY
-    float geoBoxMinZ;                                       // 14 m_geoBoxMinZ
-    float geoBoxMaxX;                                       // 15 m_geoBoxMaxX
-    float geoBoxMaxY;                                       // 16 m_geoBoxMaxY
-    float geoBoxMaxZ;                                       // 17 m_geoBoxMaxZ
+    float minX;                                             // 12 m_geoBoxMinX
+    float minY;                                             // 13 m_geoBoxMinY
+    float minZ;                                             // 14 m_geoBoxMinZ
+    float maxX;                                             // 15 m_geoBoxMaxX
+    float maxY;                                             // 16 m_geoBoxMaxY
+    float maxZ;                                             // 17 m_geoBoxMaxZ
 };
 
 struct GemPropertiesEntry
@@ -437,6 +460,34 @@ struct GemPropertiesEntry
     //          m_maxcount_inv
     //          m_maxcount_item
     uint32      color;                                      //          m_type
+};
+
+struct GMSurveyCurrentSurveyEntry
+{
+    uint32    localeID;                                     // 0    m_LANGID
+    uint32    surveyID;                                     // 1    m_GMSURVEY_ID
+};
+
+#define MAX_GMSURVEY_QUESTIONS 10                           // Hardcoded in all versions of the game, max amount of questions in gm survey
+
+struct GMSurveyEntry
+{
+    uint32    ID;                                           // 0    m_ID
+    uint32    questionID[MAX_GMSURVEY_QUESTIONS];           // 1-11 m_Q[10]
+};
+
+struct GMSurveyQuestionsEntry
+{
+    uint32    ID;                                           // 0    m_ID
+    char*     question[16];                                 // 1-17 m_Question_lang;
+    // 18 string flags, unused
+};
+
+struct GMTicketCategoryEntry
+{
+    uint32    ID;                                           // 0    m_ID
+    char*     name[16];                                     // 1-17 m_category_lang
+    // 18 string flags, unused
 };
 
 // All Gt* DBC store data for 100 levels, some by 100 per class/race
@@ -685,15 +736,18 @@ struct SkillRaceClassInfoEntry
     uint32    classMask;                                    // 3        m_classMask
     uint32    flags;                                        // 4        m_flags
     uint32    reqLevel;                                     // 5        m_minLevel
-    // uint32    skillTierId;                               // 6        m_skillTierID
+    uint32    skillTierId;                                  // 6        m_skillTierID
     // uint32    skillCostID;                               // 7        m_skillCostIndex
 };
 
-/*struct SkillTiersEntry{
+#define MAX_SKILL_STEP 16
+
+struct SkillTiersEntry
+{
     uint32    id;                                           // 0        m_ID
-    uint32    skillValue[16];                               // 1-17     m_cost
-    uint32    maxSkillValue[16];                            // 18-3     m_valueMax
-};*/
+    uint32    skillValue[MAX_SKILL_STEP];                   // 1-17     m_cost
+    uint32    maxSkillValue[MAX_SKILL_STEP];                // 18-33    m_valueMax
+};
 
 struct SkillLineEntry
 {
@@ -773,7 +827,7 @@ struct SpellEntry
 {
         uint32    Id;                                       // 0        m_ID
         uint32    Category;                                 // 1        m_category
-        // uint32     castUI                                // 2 not used
+        uint32    CastUI;                                   // 2        not used
         uint32    Dispel;                                   // 3        m_dispelType
         uint32    Mechanic;                                 // 4        m_mechanic
         uint32    Attributes;                               // 5        m_attributes
@@ -813,7 +867,7 @@ struct SpellEntry
         uint32    manaPerSecondPerLevel;                    // 39       m_manaPerSecondPerLevel
         uint32    rangeIndex;                               // 40       m_rangeIndex
         float     speed;                                    // 41       m_speed
-        // uint32    modalNextSpell;                        // 42       m_modalNextSpell not used
+        uint32    modalNextSpell;                           // 42       m_modalNextSpell not used
         uint32    StackAmount;                              // 43       m_cumulativeAura
         uint32    Totem[MAX_SPELL_TOTEMS];                  // 44-45    m_totem
         int32     Reagent[MAX_SPELL_REAGENTS];              // 46-53    m_reagent
@@ -862,15 +916,18 @@ struct SpellEntry
         uint32    MaxAffectedTargets;                       // 202      m_maxTargets
         uint32    DmgClass;                                 // 203      m_defenseType
         uint32    PreventionType;                           // 204      m_preventionType
-        // uint32    StanceBarOrder;                        // 205      m_stanceBarOrder not used
+        int32    StanceBarOrder;                            // 205      m_stanceBarOrder not used
         float     DmgMultiplier[MAX_EFFECT_INDEX];          // 206-208  m_effectChainAmplitude
-        // uint32    MinFactionId;                          // 209      m_minFactionID not used
-        // uint32    MinReputation;                         // 210      m_minReputation not used
-        // uint32    RequiredAuraVision;                    // 211      m_requiredAuraVision not used
+        uint32    MinFactionId;                             // 209      m_minFactionID not used
+        uint32    MinReputation;                            // 210      m_minReputation not used
+        uint32    RequiredAuraVision;                       // 211      m_requiredAuraVision not used
         uint32    TotemCategory[MAX_SPELL_TOTEM_CATEGORIES];// 212-213  m_requiredTotemCategoryID
         uint32    AreaId;                                   // 214
         uint32    SchoolMask;                               // 215      m_schoolMask
-        uint32    IsServerSide;
+
+        // custom
+        uint32    IsServerSide;                             // 216
+        uint32    AttributesServerside;                     // 217
 
         // helpers
         int32 CalculateSimpleValue(SpellEffectIndex eff) const { return EffectBasePoints[eff] + int32(EffectBaseDice[eff]); }
@@ -895,13 +952,16 @@ struct SpellEntry
             return SpellFamily(SpellFamilyName) == family && IsFitToFamilyMask(mask);
         }
 
-        bool HasAttribute(SpellAttributes attribute) const { return !!(Attributes & attribute); }
-        bool HasAttribute(SpellAttributesEx attribute) const { return !!(AttributesEx & attribute); }
-        bool HasAttribute(SpellAttributesEx2 attribute) const { return !!(AttributesEx2 & attribute); }
-        bool HasAttribute(SpellAttributesEx3 attribute) const { return !!(AttributesEx3 & attribute); }
-        bool HasAttribute(SpellAttributesEx4 attribute) const { return !!(AttributesEx4 & attribute); }
-        bool HasAttribute(SpellAttributesEx5 attribute) const { return !!(AttributesEx5 & attribute); }
-        bool HasAttribute(SpellAttributesEx6 attribute) const { return !!(AttributesEx6 & attribute); }
+        inline bool HasAttribute(SpellAttributes attribute) const { return (Attributes & attribute) != 0; }
+        inline bool HasAttribute(SpellAttributesEx attribute) const { return (AttributesEx & attribute) != 0; }
+        inline bool HasAttribute(SpellAttributesEx2 attribute) const { return (AttributesEx2 & attribute) != 0; }
+        inline bool HasAttribute(SpellAttributesEx3 attribute) const { return (AttributesEx3 & attribute) != 0; }
+        inline bool HasAttribute(SpellAttributesEx4 attribute) const { return (AttributesEx4 & attribute) != 0; }
+        inline bool HasAttribute(SpellAttributesEx5 attribute) const { return (AttributesEx5 & attribute) != 0; }
+        inline bool HasAttribute(SpellAttributesEx6 attribute) const { return (AttributesEx6 & attribute) != 0; }
+
+        // custom
+        bool HasAttribute(SpellAttributesServerside attribute) const { return (AttributesServerside & attribute) != 0; }
 
     private:
         // prevent creating custom entries (copy data from original in fact)
@@ -917,8 +977,8 @@ struct SpellCastTimesEntry
 {
     uint32    ID;                                           // 0        m_ID
     int32     CastTime;                                     // 1        m_base
-    // float     CastTimePerLevel;                          // 2        m_perLevel
-    // int32     MinCastTime;                               // 3        m_minimum
+    int32     CastTimePerLevel;                             // 2        m_perLevel
+    int32     MinCastTime;                                  // 3        m_minimum
 };
 
 struct SpellFocusObjectEntry
@@ -941,7 +1001,7 @@ struct SpellRangeEntry
     uint32    ID;                                           // 0        m_ID
     float     minRange;                                     // 1        m_rangeMin
     float     maxRange;                                     // 2        m_rangeMax
-    // uint32  Flags;                                       // 3        m_flags
+    uint32  Flags;                                          // 3        m_flags
     // char*   Name[16];                                    // 4-19     m_displayName_lang
     // uint32  NameFlags;                                   // 20 string flags
     // char*   ShortName[16];                               // 21-36    m_displayNameShort_lang
@@ -993,6 +1053,38 @@ struct SpellItemEnchantmentConditionEntry
     uint8   Comparator[5];
     uint8   CompareColor[5];
     uint32  Value[5];
+};
+
+struct SpellVisualEntry
+{
+    uint32 Id;
+    //uint32 PrecastKit;
+    //uint32 CastingKit;
+    //uint32 ImpactKit;
+    //uint32 StateKit;
+    //uint32 StateDoneKit; - from wotlk, not in tbc
+    //uint32 ChannelKit;
+    uint32 HasMissile;
+    int32 MissileModel;
+    //uint32 MissilePathType;
+    //uint32 MissileDestinationAttachment;
+    //uint32 MissileSound;
+    //uint32 AnimEventSoundID;
+    //uint32 Flags;
+    //uint32 CasterImpactKit;
+    //uint32 TargetImpactKit;
+    //int32 MissileAttachment;
+    //uint32 MissileFollowGroundHeight;
+    //uint32 MissileFollowGroundDropSpeed;
+    //uint32 MissileFollowGroundApprach;
+    //uint32 MissileFollowGroundFlags;
+    //uint32 MissileMotionId;
+    //uint32 MissileTargetingKit;
+    //uint32 InstantAreaKit;
+    //uint32 ImpactAreaKit;
+    //uint32 PersistentAreaKit;
+    //DBCPosition3D MissileCastOffset; - from wotlk, not in tbc
+    //DBCPosition3D MissileImpactOffset; - from wotlk, not in tbc
 };
 
 struct StableSlotPricesEntry
@@ -1138,6 +1230,7 @@ struct WorldMapOverlayEntry
 };
 */
 
+/* Structure WorldSafeLocsEntry is no longer loaded from DBC but from DB instead
 struct WorldSafeLocsEntry
 {
     uint32    ID;                                           // 0        m_ID
@@ -1148,6 +1241,7 @@ struct WorldSafeLocsEntry
     // char*   name[16]                                     // 5-20     m_AreaName_lang
     // 21 string flags
 };
+*/
 
 // GCC have alternative #pragma pack() syntax and old gcc version not support pack(pop), also any gcc version not support it at some platform
 #if defined( __GNUC__ )

@@ -25,7 +25,7 @@ EndScriptData */
 npc_ranger_lilatha
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -113,7 +113,7 @@ struct npc_ranger_lilathaAI : public npc_escortAI
                 SetRun(false);
                 break;
             case 30:
-                pPlayer->GroupEventHappens(QUEST_CATACOMBS, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_CATACOMBS, m_creature);
                 break;
             case 32:
                 DoScriptText(SAY_END1, m_creature, pPlayer);
@@ -136,7 +136,7 @@ struct npc_ranger_lilathaAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_ranger_lilathaAI(Creature* pCreature)
+UnitAI* GetAI_npc_ranger_lilathaAI(Creature* pCreature)
 {
     return new npc_ranger_lilathaAI(pCreature);
 }
@@ -155,9 +155,7 @@ bool QuestAccept_npc_ranger_lilatha(Player* pPlayer, Creature* pCreature, const 
 
 void AddSC_ghostlands()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_ranger_lilatha";
     pNewScript->GetAI = &GetAI_npc_ranger_lilathaAI;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_ranger_lilatha;

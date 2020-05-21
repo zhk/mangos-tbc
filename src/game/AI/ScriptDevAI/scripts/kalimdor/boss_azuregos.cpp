@@ -21,7 +21,7 @@ SDComment: Enrage is to be checked
 SDCategory: Azshara
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -77,7 +77,7 @@ struct boss_azuregosAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiTeleportTimer < uiDiff)
@@ -133,7 +133,7 @@ struct boss_azuregosAI : public ScriptedAI
         // Cleave Timer
         if (m_uiCleaveTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CLEAVE) == CAST_OK)
                 m_uiCleaveTimer = 7000;
         }
         else
@@ -150,16 +150,14 @@ struct boss_azuregosAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_azuregos(Creature* pCreature)
+UnitAI* GetAI_boss_azuregos(Creature* pCreature)
 {
     return new boss_azuregosAI(pCreature);
 }
 
 void AddSC_boss_azuregos()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_azuregos";
     pNewScript->GetAI = &GetAI_boss_azuregos;
     pNewScript->RegisterSelf();

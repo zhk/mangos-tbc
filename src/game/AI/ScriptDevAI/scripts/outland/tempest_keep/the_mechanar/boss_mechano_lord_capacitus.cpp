@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Tempest Keep, The Mechanar
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "mechanar.h"
 
 enum
@@ -123,7 +123,7 @@ struct boss_mechano_lord_capacitusAI : public ScriptedAI
 
     void UpdateAI(const uint32 diff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_isRegularMode)
@@ -179,6 +179,7 @@ struct boss_mechano_lord_capacitusAI : public ScriptedAI
                 case 0: spellId = SPELL_SUMMON_NETHER_CHARGE_NE; break;
                 case 1: spellId = SPELL_SUMMON_NETHER_CHARGE_NW; break;
                 case 2: spellId = SPELL_SUMMON_NETHER_CHARGE_SE; break;
+                default:
                 case 3: spellId = SPELL_SUMMON_NETHER_CHARGE_SW; break;
             }
             m_creature->CastSpell(m_creature, spellId, TRIGGERED_NONE);
@@ -197,7 +198,7 @@ struct boss_mechano_lord_capacitusAI : public ScriptedAI
         // Head Crack
         if (m_headCrackTimer < diff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HEAD_CRACK) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HEAD_CRACK) == CAST_OK)
                 m_headCrackTimer = urand(19500, 33500);
         }
         else
@@ -216,16 +217,14 @@ struct boss_mechano_lord_capacitusAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_mechano_lord_capacitus(Creature* creature)
+UnitAI* GetAI_boss_mechano_lord_capacitus(Creature* creature)
 {
     return new boss_mechano_lord_capacitusAI(creature);
 }
 
 void AddSC_boss_mechano_lord_capacitus()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_mechano_lord_capacitus";
     pNewScript->GetAI = &GetAI_boss_mechano_lord_capacitus;
     pNewScript->RegisterSelf();

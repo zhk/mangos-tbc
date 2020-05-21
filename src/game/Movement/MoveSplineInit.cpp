@@ -24,33 +24,6 @@
 
 namespace Movement
 {
-    UnitMoveType SelectSpeedType(uint32 moveFlags)
-    {
-        if (moveFlags & MOVEFLAG_FLYING)
-        {
-            if (moveFlags & MOVEFLAG_BACKWARD /*&& speed_obj.flight >= speed_obj.flight_back*/)
-                return MOVE_FLIGHT_BACK;
-            else
-                return MOVE_FLIGHT;
-        }
-        else if (moveFlags & MOVEFLAG_SWIMMING)
-        {
-            if (moveFlags & MOVEFLAG_BACKWARD /*&& speed_obj.swim >= speed_obj.swim_back*/)
-                return MOVE_SWIM_BACK;
-            else
-                return MOVE_SWIM;
-        }
-        else if (moveFlags & MOVEFLAG_WALK_MODE)
-        {
-            // if ( speed_obj.run > speed_obj.walk )
-            return MOVE_WALK;
-        }
-        else if (moveFlags & MOVEFLAG_BACKWARD /*&& speed_obj.run >= speed_obj.run_back*/)
-            return MOVE_RUN_BACK;
-
-        return MOVE_RUN;
-    }
-
     int32 MoveSplineInit::Launch()
     {
         MoveSpline& move_spline = *unit.movespline;
@@ -84,12 +57,12 @@ namespace Movement
         moveFlags |= (MOVEFLAG_SPLINE_ENABLED | MOVEFLAG_FORWARD);
 
         if (args.velocity == 0.f)
-            args.velocity = unit.GetSpeed(SelectSpeedType(moveFlags));
+            args.velocity = unit.GetSpeed(MovementInfo::GetSpeedType(MovementFlags(moveFlags)));
 
         if (!args.Validate(&unit))
             return 0;
 
-        unit.m_movementInfo.SetMovementFlags((MovementFlags)moveFlags);
+        unit.m_movementInfo.SetMovementFlags(MovementFlags(moveFlags));
         move_spline.Initialize(args);
 
         WorldPacket data(SMSG_MONSTER_MOVE, 64);
@@ -160,7 +133,7 @@ namespace Movement
     {
         // mix existing state into new
         args.flags.runmode = !unit.m_movementInfo.HasMovementFlag(MOVEFLAG_WALK_MODE);
-        args.flags.flying = unit.m_movementInfo.HasMovementFlag((MovementFlags)(MOVEFLAG_CAN_FLY | MOVEFLAG_FLYING | MOVEFLAG_LEVITATING));
+        args.flags.flying = unit.m_movementInfo.HasMovementFlag((MovementFlags)(MOVEFLAG_CAN_FLY | MOVEFLAG_HOVER | MOVEFLAG_FLYING | MOVEFLAG_LEVITATING));
     }
 
     void MoveSplineInit::SetFacing(const Unit* target)

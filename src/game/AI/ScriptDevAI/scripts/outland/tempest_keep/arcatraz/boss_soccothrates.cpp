@@ -21,7 +21,7 @@ SDComment: Spell Felfire Line Up and Wrath-Scryer's Felfire npc are summoning ar
 SDCategory: Tempest Keep, The Arcatraz
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "arcatraz.h"
 
 enum
@@ -147,12 +147,11 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
     void EnterEvadeMode() override
     {
         m_creature->RemoveAllAurasOnEvade();
-        m_creature->DeleteThreatList();
         m_creature->CombatStop(true);
         m_creature->LoadCreatureAddon(true);
 
         // should evade to the attack position
-        if (m_creature->isAlive())
+        if (m_creature->IsAlive())
             m_creature->GetMotionMaster()->MovePoint(1, aSoccotharesStartPos[0], aSoccotharesStartPos[1], aSoccotharesStartPos[2]);
 
         if (m_pInstance)
@@ -217,12 +216,12 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
     {
         DialogueUpdate(uiDiff);
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiFelfireShockTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), m_bIsRegularMode ? SPELL_FELFIRE_SHOCK : SPELL_FELFIRE_SHOCK_H) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_FELFIRE_SHOCK : SPELL_FELFIRE_SHOCK_H) == CAST_OK)
                 m_uiFelfireShockTimer = urand(35000, 45000);
         }
         else
@@ -244,7 +243,7 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
         {
             if (m_uiFelfireLineupTimer <= uiDiff)
             {
-                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
                 {
                     if (DoCastSpellIfCan(pTarget, SPELL_CHARGE_TARGETING) == CAST_OK)
                     {
@@ -280,16 +279,14 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_boss_soccothrates(Creature* pCreature)
+UnitAI* GetAI_boss_soccothrates(Creature* pCreature)
 {
     return new boss_soccothratesAI(pCreature);
 }
 
 void AddSC_boss_soccothrates()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_soccothrates";
     pNewScript->GetAI = &GetAI_boss_soccothrates;
     pNewScript->RegisterSelf();

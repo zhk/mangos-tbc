@@ -25,7 +25,7 @@ EndScriptData */
 npc_ranshalla
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -186,7 +186,7 @@ struct npc_ranshallaAI : public npc_escortAI, private DialogueHelper
         m_uiDelayTimer = 2000;
     }
 
-    void SpellHit(Unit* pCaster, const SpellEntry* pSpell) override
+    void SpellHit(Unit* /*pCaster*/, const SpellEntry* pSpell) override
     {
         // If Ranshalla cast the torch lightening spell for too long she will trigger SPELL_RANSHALLA_DESPAWN (quest failed and despawn)
         if (pSpell->Id == SPELL_RANSHALLA_DESPAWN)
@@ -276,11 +276,11 @@ struct npc_ranshallaAI : public npc_escortAI, private DialogueHelper
             case 41:
             {
                 // Search for all nearest lights and respawn them
-                std::list<GameObject*> m_lEluneLights;
+                GameObjectList m_lEluneLights;
                 GetGameObjectListWithEntryInGrid(m_lEluneLights, m_creature, GO_ELUNE_LIGHT, 20.0f);
-                for (std::list<GameObject*>::const_iterator itr = m_lEluneLights.begin(); itr != m_lEluneLights.end(); ++itr)
+                for (GameObjectList::const_iterator itr = m_lEluneLights.begin(); itr != m_lEluneLights.end(); ++itr)
                 {
-                    if ((*itr)->isSpawned())
+                    if ((*itr)->IsSpawned())
                         continue;
 
                     (*itr)->SetRespawnTime(115);
@@ -321,7 +321,7 @@ struct npc_ranshallaAI : public npc_escortAI, private DialogueHelper
                 // make the gem and its aura respawn
                 if (GameObject* pGem = GetClosestGameObjectWithEntry(m_creature, GO_ELUNE_GEM, 10.0f))
                 {
-                    if (pGem->isSpawned())
+                    if (pGem->IsSpawned())
                         break;
 
                     pGem->SetRespawnTime(90);
@@ -329,7 +329,7 @@ struct npc_ranshallaAI : public npc_escortAI, private DialogueHelper
                 }
                 if (GameObject* pAura = GetClosestGameObjectWithEntry(m_creature, GO_ELUNE_AURA, 10.0f))
                 {
-                    if (pAura->isSpawned())
+                    if (pAura->IsSpawned())
                         break;
 
                     pAura->SetRespawnTime(90);
@@ -404,7 +404,7 @@ struct npc_ranshallaAI : public npc_escortAI, private DialogueHelper
                     m_creature->SetFacingToObject(pAltar);
                 m_creature->SetStandState(UNIT_STAND_STATE_KNEEL);
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_GUARDIANS_ALTAR, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_GUARDIANS_ALTAR, m_creature);
                 m_creature->ForcedDespawn(1 * MINUTE * IN_MILLISECONDS);
                 break;
         }
@@ -443,14 +443,14 @@ struct npc_ranshallaAI : public npc_escortAI, private DialogueHelper
                 m_uiDelayTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_npc_ranshalla(Creature* pCreature)
+UnitAI* GetAI_npc_ranshalla(Creature* pCreature)
 {
     return new npc_ranshallaAI(pCreature);
 }
@@ -613,16 +613,12 @@ struct npc_artoriusAI : public ScriptedAI
             {
                 ThreatList const& tList = m_creature->getThreatManager().getThreatList();
 
-                for (ThreatList::const_iterator itr = tList.begin(); itr != tList.end(); ++itr)
+                for (auto itr : tList)
                 {
-                    if (Unit* pUnit = m_creature->GetMap()->GetUnit((*itr)->getUnitGuid()))
+                    if (Unit* pUnit = m_creature->GetMap()->GetUnit(itr->getUnitGuid()))
                     {
-                        if (pUnit->isAlive())
-                        {
-                            pCleaner->SetInCombatWith(pUnit);
-                            pCleaner->AddThreat(pUnit);
+                        if (pUnit->IsAlive())
                             pCleaner->AI()->AttackStart(pUnit);
-                        }
                     }
                 }
             }
@@ -631,7 +627,7 @@ struct npc_artoriusAI : public ScriptedAI
         m_creature->ForcedDespawn();
     }
 
-    void SpellHit(Unit* pCaster, const SpellEntry* pSpell) override
+    void SpellHit(Unit* /*pCaster*/, const SpellEntry* pSpell) override
     {
         if (pSpell->Id == 13555 || pSpell->Id == 25295)             // Serpent Sting (Rank 8 or Rank 9)
         {
@@ -670,14 +666,14 @@ struct npc_artoriusAI : public ScriptedAI
         {
             if (m_uiDespawn_Timer <= uiDiff)
             {
-                if (m_creature->isAlive() && !m_creature->isInCombat())
+                if (m_creature->IsAlive() && !m_creature->IsInCombat())
                     DemonDespawn(false);
             }
             else
                 m_uiDespawn_Timer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_creature->getThreatManager().getThreatList().size() > 1)
@@ -696,8 +692,8 @@ struct npc_artoriusAI : public ScriptedAI
             m_uiDemonic_Doom_Timer = 7500;
             // only attempt to cast this once every 7.5 seconds to give the hunter some leeway
             // LOWER max range for lag...
-            if (m_creature->IsWithinDistInMap(m_creature->getVictim(), 25))
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_DEMONIC_DOOM);
+            if (m_creature->IsWithinDistInMap(m_creature->GetVictim(), 25))
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_DEMONIC_DOOM);
         }
         else
             m_uiDemonic_Doom_Timer -= uiDiff;
@@ -715,23 +711,21 @@ bool GossipHello_npc_artorius(Player* pPlayer, Creature* pCreature)
     return true;
 }
 
-bool GossipSelect_npc_artorius(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
+bool GossipSelect_npc_artorius(Player* pPlayer, Creature* pCreature, uint32 /*uiSender*/, uint32 /*uiAction*/)
 {
     pPlayer->CLOSE_GOSSIP_MENU();
     ((npc_artoriusAI*)pCreature->AI())->BeginEvent(pPlayer->GetObjectGuid());
     return true;
 }
 
-CreatureAI* GetAI_npc_artorius(Creature* pCreature)
+UnitAI* GetAI_npc_artorius(Creature* pCreature)
 {
     return new npc_artoriusAI(pCreature);
 }
 
 void AddSC_winterspring()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_ranshalla";
     pNewScript->GetAI = &GetAI_npc_ranshalla;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_ranshalla;

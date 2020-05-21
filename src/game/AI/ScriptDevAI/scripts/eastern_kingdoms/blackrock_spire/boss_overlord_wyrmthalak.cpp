@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Blackrock Spire
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -69,17 +69,17 @@ struct boss_overlordwyrmthalakAI : public ScriptedAI
         if (pSummoned->GetEntry() != NPC_SPIRESTONE_WARLORD && pSummoned->GetEntry() != NPC_SMOLDERTHORN_BERSERKER && pSummoned->GetEntry() != NPC_BLOODAXE_VETERAN)
             return;
 
-        if (m_creature->getVictim())
+        if (m_creature->GetVictim())
         {
             Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0);
-            pSummoned->AI()->AttackStart(pTarget ? pTarget : m_creature->getVictim());
+            pSummoned->AI()->AttackStart(pTarget ? pTarget : m_creature->GetVictim());
         }
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // BlastWave
@@ -103,7 +103,7 @@ struct boss_overlordwyrmthalakAI : public ScriptedAI
         // Cleave
         if (m_uiCleaveTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CLEAVE);
             m_uiCleaveTimer = 7000;
         }
         else
@@ -141,16 +141,14 @@ struct boss_overlordwyrmthalakAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_overlordwyrmthalak(Creature* pCreature)
+UnitAI* GetAI_boss_overlordwyrmthalak(Creature* pCreature)
 {
     return new boss_overlordwyrmthalakAI(pCreature);
 }
 
 void AddSC_boss_overlordwyrmthalak()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_overlord_wyrmthalak";
     pNewScript->GetAI = &GetAI_boss_overlordwyrmthalak;
     pNewScript->RegisterSelf();

@@ -21,7 +21,7 @@ SDComment: Transform spell has some minor core issues. Eject from stomach event 
 SDCategory: Temple of Ahn'Qiraj
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "temple_of_ahnqiraj.h"
 
 enum
@@ -36,7 +36,7 @@ enum
     SPELL_ROTATE_360_RIGHT          = 26136,
 
     // ***** Phase 2 ******
-    // SPELL_CARAPACE_CTHUN         = 26156,                // Was removed from client dbcs
+    SPELL_CARAPACE_CTHUN            = 26156,                // Was removed from client dbcs
     SPELL_TRANSFORM                 = 26232,
     SPELL_CTHUN_VULNERABLE          = 26235,
     SPELL_MOUTH_TENTACLE            = 26332,                // prepare target to teleport to stomach
@@ -55,6 +55,7 @@ enum
     SPELL_GROUND_TREMOR             = 6524,
     SPELL_HAMSTRING                 = 26211,
     SPELL_THRASH                    = 3391,
+    SPELL_SUBMERGE_VISUAL           = 28819,
 
     // Npcs
     // Phase 1 npcs
@@ -191,13 +192,13 @@ struct boss_eye_of_cthunAI : public Scripted_NoMovementAI
             pPortal->ForcedDespawn();
     }
 
-    // Wrapper to kill the eye tentacles before summoning new ones
+    // Wrapper to kill the eye tentacles before summoning new ones - Note: based on sniff I think this is a bad approach
     void DoDespawnEyeTentacles()
     {
         for (GuidList::const_iterator itr = m_lEyeTentaclesList.begin(); itr != m_lEyeTentaclesList.end(); ++itr)
         {
             if (Creature* pTemp = m_creature->GetMap()->GetCreature(*itr))
-                pTemp->DealDamage(pTemp, pTemp->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NONE, nullptr, false);
+                pTemp->Suicide();
         }
 
         m_lEyeTentaclesList.clear();
@@ -207,7 +208,7 @@ struct boss_eye_of_cthunAI : public Scripted_NoMovementAI
     bool SelectHostileTarget()
     {
         Unit* pTarget = nullptr;
-        Unit* pOldTarget = m_creature->getVictim();
+        Unit* pOldTarget = m_creature->GetVictim();
 
         if (!m_creature->getThreatManager().isThreatListEmpty())
             pTarget = m_creature->getThreatManager().getHostileTarget();
@@ -218,7 +219,7 @@ struct boss_eye_of_cthunAI : public Scripted_NoMovementAI
                 AttackStart(pTarget);
 
             // Set victim to old target (if not while Dark Glare)
-            if (pOldTarget && pOldTarget->isAlive() && m_Phase == PHASE_EYE_NORMAL)
+            if (pOldTarget && pOldTarget->IsAlive() && m_Phase == PHASE_EYE_NORMAL)
             {
                 m_creature->SetTarget(pOldTarget);
                 m_creature->SetInFront(pOldTarget);
@@ -261,7 +262,7 @@ struct boss_eye_of_cthunAI : public Scripted_NoMovementAI
                     {
                         // Remove the target focus but allow the boss to face the current victim
                         m_creature->SetTarget(nullptr);
-                        m_creature->SetFacingToObject(m_creature->getVictim());
+                        m_creature->SetFacingToObject(m_creature->GetVictim());
 
                         // Switch to Dark Glare phase
                         m_uiDarkGlareTimer    = 45000;
@@ -383,21 +384,15 @@ struct boss_cthunAI : public Scripted_NoMovementAI
         m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
     }
 
-    void DamageTaken(Unit* /*pDealer*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDealer*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
         // Ignore damage reduction when vulnerable
         if (m_Phase == PHASE_CTHUN_WEAKENED)
             return;
 
-        // Not weakened so reduce damage by 99% - workaround for missing spell 26156
-        if (uiDamage / 99 > 0)
-            uiDamage /= 99;
-        else
-            uiDamage = 1;
-
         // Prevent death in non-weakened state
-        if (uiDamage >= m_creature->GetHealth())
-            uiDamage = 0;
+        if (damage >= m_creature->GetHealth())
+            damage = std::min(damage, m_creature->GetHealth() - 1);
     }
 
     void EnterEvadeMode() override
@@ -487,13 +482,13 @@ struct boss_cthunAI : public Scripted_NoMovementAI
             m_creature->SummonCreature(NPC_FLESH_TENTACLE, afCthunLocations[i][0], afCthunLocations[i][1], afCthunLocations[i][2], afCthunLocations[i][3], TEMPSPAWN_DEAD_DESPAWN, 0);
     }
 
-    // Wrapper to kill the eye tentacles before summoning new ones
+    // Wrapper to kill the eye tentacles before summoning new ones - Note: based on sniff I think this is a bad approach
     void DoDespawnEyeTentacles()
     {
         for (GuidList::const_iterator itr = m_lEyeTentaclesList.begin(); itr != m_lEyeTentaclesList.end(); ++itr)
         {
             if (Creature* pTemp = m_creature->GetMap()->GetCreature(*itr))
-                pTemp->DealDamage(pTemp, pTemp->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NONE, nullptr, false);
+                pTemp->Suicide();
         }
 
         m_lEyeTentaclesList.clear();
@@ -510,7 +505,7 @@ struct boss_cthunAI : public Scripted_NoMovementAI
     bool SelectHostileTarget()
     {
         Unit* pTarget = nullptr;
-        Unit* pOldTarget = m_creature->getVictim();
+        Unit* pOldTarget = m_creature->GetVictim();
 
         if (!m_creature->getThreatManager().isThreatListEmpty())
             pTarget = m_creature->getThreatManager().getHostileTarget();
@@ -521,7 +516,7 @@ struct boss_cthunAI : public Scripted_NoMovementAI
                 AttackStart(pTarget);
 
             // Set victim to old target
-            if (pOldTarget && pOldTarget->isAlive())
+            if (pOldTarget && pOldTarget->IsAlive())
             {
                 m_creature->SetTarget(pOldTarget);
                 m_creature->SetInFront(pOldTarget);
@@ -551,6 +546,7 @@ struct boss_cthunAI : public Scripted_NoMovementAI
                     // Transform and start C'thun phase
                     if (DoCastSpellIfCan(m_creature, SPELL_TRANSFORM) == CAST_OK)
                     {
+                        m_creature->CastSpell(nullptr, SPELL_CARAPACE_CTHUN, TRIGGERED_OLD_TRIGGERED);
                         m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
                         DoSpawnFleshTentacles();
 
@@ -703,7 +699,7 @@ struct npc_giant_claw_tentacleAI : public Scripted_NoMovementAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Check if we have a target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiDistCheckTimer < uiDiff)
@@ -718,7 +714,10 @@ struct npc_giant_claw_tentacleAI : public Scripted_NoMovementAI
                         pCthun->SummonCreature(NPC_GIANT_CLAW_TENTACLE, pTarget->GetPositionX(), pTarget->GetPositionY(), pTarget->GetPositionZ(), 0, TEMPSPAWN_DEAD_DESPAWN, 0);
 
                         // Self kill when a new tentacle is spawned
-                        m_creature->DealDamage(m_creature, m_creature->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NONE, nullptr, false);
+                        SetCombatScriptStatus(true);
+                        m_creature->SetTarget(nullptr);
+                        m_creature->CastSpell(nullptr, SPELL_SUBMERGE_VISUAL, TRIGGERED_OLD_TRIGGERED);
+                        m_creature->ForcedDespawn(1500);
                         return;
                     }
                 }
@@ -731,7 +730,7 @@ struct npc_giant_claw_tentacleAI : public Scripted_NoMovementAI
 
         if (m_uiThrashTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_THRASH) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_THRASH) == CAST_OK)
                 m_uiThrashTimer = 10000;
         }
         else
@@ -739,7 +738,7 @@ struct npc_giant_claw_tentacleAI : public Scripted_NoMovementAI
 
         if (m_uiHamstringTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HAMSTRING) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HAMSTRING) == CAST_OK)
                 m_uiHamstringTimer = 10000;
         }
         else
@@ -757,7 +756,7 @@ bool AreaTrigger_at_stomach_cthun(Player* pPlayer, AreaTriggerEntry const* pAt)
 {
     if (pAt->id == AREATRIGGER_STOMACH_1)
     {
-        if (pPlayer->isGameMaster() || !pPlayer->isAlive())
+        if (pPlayer->isGameMaster() || !pPlayer->IsAlive())
             return false;
 
         // Summon the exit trigger which should push the player outside the stomach - not used because missing eject spells
@@ -790,26 +789,24 @@ bool AreaTrigger_at_stomach_cthun(Player* pPlayer, AreaTriggerEntry const* pAt)
     return false;
 }
 
-CreatureAI* GetAI_boss_eye_of_cthun(Creature* pCreature)
+UnitAI* GetAI_boss_eye_of_cthun(Creature* pCreature)
 {
     return new boss_eye_of_cthunAI(pCreature);
 }
 
-CreatureAI* GetAI_boss_cthun(Creature* pCreature)
+UnitAI* GetAI_boss_cthun(Creature* pCreature)
 {
     return new boss_cthunAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_giant_claw_tentacle(Creature* pCreature)
+UnitAI* GetAI_npc_giant_claw_tentacle(Creature* pCreature)
 {
     return new npc_giant_claw_tentacleAI(pCreature);
 }
 
 void AddSC_boss_cthun()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_eye_of_cthun";
     pNewScript->GetAI = &GetAI_boss_eye_of_cthun;
     pNewScript->RegisterSelf();

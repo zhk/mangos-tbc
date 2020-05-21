@@ -31,6 +31,8 @@ class WorldPacket;
 #define MAX_AUCTION_SORT 12
 #define AUCTION_SORT_REVERSED 0x10
 
+#define MAX_AUCTION_ITEMS_CLIENT_UI_PAGE 50
+
 enum AuctionError
 {
     AUCTION_OK                          = 0,                // depends on enum AuctionAction
@@ -76,7 +78,7 @@ struct AuctionEntry
     bool BuildAuctionInfo(WorldPacket& data) const;
     void DeleteFromDB() const;
     void SaveToDB() const;
-    void AuctionBidWinning(Player* bidder = nullptr);
+    void AuctionBidWinning(Player* newbidder = nullptr);
 
     // -1,0,+1 order result
     int CompareAuctionEntry(uint32 column, const AuctionEntry* auc, Player* viewPlayer) const;
@@ -119,8 +121,8 @@ class AuctionHouseObject
 
         void Update();
 
-        void BuildListBidderItems(WorldPacket& data, Player* player, uint32& count, uint32& totalcount);
-        void BuildListOwnerItems(WorldPacket& data, Player* player, uint32& count, uint32& totalcount);
+        void BuildListBidderItems(WorldPacket& data, Player* player, uint32 listfrom, uint32& count, uint32& totalcount);
+        void BuildListOwnerItems(WorldPacket& data, Player* player, uint32 listfrom, uint32& count, uint32& totalcount);
 
         AuctionEntry* AddAuction(AuctionHouseEntry const* auctionHouseEntry, Item* newItem, uint32 etime, uint32 bid, uint32 buyout = 0, uint32 deposit = 0, Player* pl = nullptr);
     private:

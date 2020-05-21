@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Scarlet Monastery
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "scarlet_monastery.h"
 
 enum
@@ -48,7 +48,12 @@ enum
     SPELL_DOMINATEMIND           = 14515,
     SPELL_HOLYSMITE              = 9481,
     SPELL_HEAL                   = 12039,
-    SPELL_POWERWORDSHIELD        = 22187
+    SPELL_POWERWORDSHIELD        = 22187,
+
+    ASHBRINGER_RELAY_SCRIPT_ID   = 9001,
+    ITEM_CORRUPTED_ASHBRINGER    = 22691,
+
+    SOUND_MOGRAINE_FAKE_DEATH    = 1326,
 };
 
 struct boss_scarlet_commander_mograineAI : public ScriptedAI
@@ -78,9 +83,28 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
         m_bFakeDeath              = false;
 
         // Incase wipe during phase that mograine fake death
-        m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+        m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
         m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
         m_creature->SetStandState(UNIT_STAND_STATE_STAND);
+    }
+
+    void MoveInLineOfSight(Unit* pWho) override
+    {
+        if (!m_pInstance)
+            return;
+
+        if (m_pInstance->GetData(TYPE_ASHBRINGER_EVENT) == IN_PROGRESS)
+        {
+            if (pWho->GetTypeId() == TYPEID_PLAYER)
+            {
+                Player* player = static_cast<Player*>(pWho);
+                if (player->HasItemOrGemWithIdEquipped(ITEM_CORRUPTED_ASHBRINGER, 1) && m_creature->IsWithinDist(player, 20.0f))
+                {
+                    player->GetMap()->ScriptsStart(sRelayScripts, ASHBRINGER_RELAY_SCRIPT_ID, m_creature, player);
+                    m_pInstance->SetData(TYPE_ASHBRINGER_EVENT, DONE);
+                }
+            }
+        }
     }
 
     void Aggro(Unit* /*pWho*/) override
@@ -102,13 +126,13 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
             return;
 
         Creature* pWhitemane = m_pInstance->GetSingleCreatureFromStorage(NPC_WHITEMANE);
-        if (pWhitemane && !pWhitemane->isAlive())
+        if (pWhitemane && !pWhitemane->IsAlive())
             pWhitemane->Respawn();
     }
 
-    void DamageTaken(Unit* /*pDoneBy*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (uiDamage < m_creature->GetHealth() || m_bHasDied)
+        if (damage < m_creature->GetHealth() || m_bHasDied)
             return;
 
         if (!m_pInstance)
@@ -124,8 +148,6 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
             m_creature->GetMotionMaster()->MovementExpired();
             m_creature->GetMotionMaster()->MoveIdle();
 
-            m_creature->SetHealth(0);
-
             if (m_creature->IsNonMeleeSpellCasted(false))
                 m_creature->InterruptNonMeleeSpells(false);
 
@@ -133,14 +155,16 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
             m_creature->RemoveAllAurasOnDeath();
             m_creature->ClearAllReactives();
 
-            m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+            m_creature->PlayDistanceSound(SOUND_MOGRAINE_FAKE_DEATH);
+
+            m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
             m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
             m_creature->SetStandState(UNIT_STAND_STATE_DEAD);
 
             m_bHasDied = true;
             m_bFakeDeath = true;
 
-            uiDamage = 0;
+            damage = std::min(damage, m_creature->GetHealth() - 1);
         }
     }
 
@@ -159,13 +183,13 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_bHasDied && !m_bHeal && m_pInstance && m_pInstance->GetData(TYPE_MOGRAINE_AND_WHITE_EVENT) == SPECIAL)
         {
             // On ressurection, stop fake death and heal whitemane and resume fight
-            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
             m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
             m_creature->SetStandState(UNIT_STAND_STATE_STAND);
             // spell has script target on Whitemane
@@ -174,8 +198,8 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
             m_uiCrusaderStrike_Timer = 8400;
             m_uiHammerOfJustice_Timer = 9600;
 
-            if (m_creature->getVictim())
-                m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim());
+            if (m_creature->GetVictim())
+                m_creature->GetMotionMaster()->MoveChase(m_creature->GetVictim());
 
             m_bHeal = true;
         }
@@ -187,7 +211,7 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
         // m_uiCrusaderStrike_Timer
         if (m_uiCrusaderStrike_Timer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CRUSADERSTRIKE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CRUSADERSTRIKE) == CAST_OK)
                 m_uiCrusaderStrike_Timer = urand(6000, 15000);
         }
         else
@@ -196,7 +220,7 @@ struct boss_scarlet_commander_mograineAI : public ScriptedAI
         // m_uiHammerOfJustice_Timer
         if (m_uiHammerOfJustice_Timer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HAMMEROFJUSTICE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HAMMEROFJUSTICE) == CAST_OK)
                 m_uiHammerOfJustice_Timer = urand(7000, 18500);
         }
         else
@@ -239,7 +263,7 @@ struct boss_high_inquisitor_whitemaneAI : public ScriptedAI
 
         if (Creature* pMograine = m_pInstance->GetSingleCreatureFromStorage(NPC_MOGRAINE))
         {
-            if (m_creature->isAlive() && !pMograine->isAlive())
+            if (m_creature->IsAlive() && !pMograine->IsAlive())
                 pMograine->Respawn();
         }
     }
@@ -258,16 +282,15 @@ struct boss_high_inquisitor_whitemaneAI : public ScriptedAI
         // This needs to be empty because Whitemane should NOT aggro while fighting Mograine. Mograine will give us a target.
     }
 
-    void DamageTaken(Unit* /*pDoneBy*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (uiDamage < m_creature->GetHealth())
+        if (damage < m_creature->GetHealth())
             return;
 
         if (!m_bCanResurrectCheck || m_bCanResurrect)
         {
             // prevent killing blow before rezzing commander
-            m_creature->SetHealth(uiDamage + 1);
-            uiDamage = 0;
+            damage = std::min(damage, m_creature->GetHealth() - 1);
         }
     }
 
@@ -291,7 +314,7 @@ struct boss_high_inquisitor_whitemaneAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_bCanResurrect)
@@ -345,7 +368,7 @@ struct boss_high_inquisitor_whitemaneAI : public ScriptedAI
         // m_uiHolySmite_Timer
         if (m_uiHolySmite_Timer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HOLYSMITE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HOLYSMITE) == CAST_OK)
                 m_uiHolySmite_Timer = urand(3500, 5000);
         }
         else
@@ -355,21 +378,19 @@ struct boss_high_inquisitor_whitemaneAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_scarlet_commander_mograine(Creature* pCreature)
+UnitAI* GetAI_boss_scarlet_commander_mograine(Creature* pCreature)
 {
     return new boss_scarlet_commander_mograineAI(pCreature);
 }
 
-CreatureAI* GetAI_boss_high_inquisitor_whitemane(Creature* pCreature)
+UnitAI* GetAI_boss_high_inquisitor_whitemane(Creature* pCreature)
 {
     return new boss_high_inquisitor_whitemaneAI(pCreature);
 }
 
 void AddSC_boss_mograine_and_whitemane()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_scarlet_commander_mograine";
     pNewScript->GetAI = &GetAI_boss_scarlet_commander_mograine;
     pNewScript->RegisterSelf();

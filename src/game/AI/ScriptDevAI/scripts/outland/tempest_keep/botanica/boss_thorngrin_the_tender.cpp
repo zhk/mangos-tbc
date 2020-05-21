@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Tempest Keep, The Botanica
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -63,7 +63,7 @@ struct boss_thorngrinAI : ScriptedAI
         m_below50 = m_below20 = false;
     }
 
-    void Aggro(Unit* who) override
+    void Aggro(Unit* /*who*/) override
     {
         DoScriptText(SAY_AGGRO, m_creature);
     }
@@ -81,7 +81,7 @@ struct boss_thorngrinAI : ScriptedAI
 
     void UpdateAI(const uint32 diff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Hellfire
@@ -130,16 +130,14 @@ struct boss_thorngrinAI : ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_thorngrin(Creature* pCreature)
+UnitAI* GetAI_boss_thorngrin(Creature* pCreature)
 {
     return new boss_thorngrinAI(pCreature);
 }
 
 void AddSC_boss_thorngrin()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_thorngrin";
     pNewScript->GetAI = &GetAI_boss_thorngrin;
     pNewScript->RegisterSelf();

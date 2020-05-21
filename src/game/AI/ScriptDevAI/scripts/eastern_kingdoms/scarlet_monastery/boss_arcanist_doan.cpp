@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Scarlet Monastery
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -61,7 +61,7 @@ struct boss_arcanist_doanAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiDetonationTimer)
@@ -125,16 +125,14 @@ struct boss_arcanist_doanAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_arcanist_doan(Creature* pCreature)
+UnitAI* GetAI_boss_arcanist_doan(Creature* pCreature)
 {
     return new boss_arcanist_doanAI(pCreature);
 }
 
 void AddSC_boss_arcanist_doan()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_arcanist_doan";
     pNewScript->GetAI = &GetAI_boss_arcanist_doan;
     pNewScript->RegisterSelf();

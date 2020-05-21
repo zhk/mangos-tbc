@@ -41,11 +41,6 @@ if(WIN32)
   set(EXECUTABLE_SRCS ${EXECUTABLE_SRCS} mangosd.rc)
 endif()
 
-include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_BINARY_DIR}
-)
-
 add_executable(${EXECUTABLE_NAME}
   ${EXECUTABLE_SRCS}
 )
@@ -57,12 +52,6 @@ target_link_libraries(${EXECUTABLE_NAME}
 )
 
 if(WIN32)
-  target_link_libraries(${EXECUTABLE_NAME}
-    optimized ${MYSQL_LIBRARY}
-    optimized ${OPENSSL_LIBRARIES}
-    debug ${MYSQL_DEBUG_LIBRARY}
-    debug ${OPENSSL_DEBUG_LIBRARIES}
-  )
   if(MINGW)
     target_link_libraries(${EXECUTABLE_NAME}
       wsock32
@@ -73,30 +62,14 @@ if(WIN32)
   # Define OutDir to source/bin/(platform)_(configuaration) folder.
   set_target_properties(${EXECUTABLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG "${DEV_BIN_DIR}")
   set_target_properties(${EXECUTABLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${DEV_BIN_DIR}")
-  set_target_properties(${EXECUTABLE_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(OutDir)")
+  set_target_properties(${EXECUTABLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${DEV_BIN_DIR}")
+  set_target_properties(${EXECUTABLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${DEV_BIN_DIR}")
+  set_target_properties(${EXECUTABLE_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${DEV_BIN_DIR}")
   set_target_properties(${EXECUTABLE_NAME} PROPERTIES PROJECT_LABEL "WorldServer")
-
-  # Add provided dependency lib to dev folder
-  string(REGEX REPLACE "/" "\\\\" LibFolder ${DEV_PROVIDED_LIBS_FOLDER})
-  add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
-    COMMAND copy \"${LibFolder}\\*.dll\" \"$(OutDir)\")
 
   # Add conf file to dev folder
   add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different \"${CMAKE_CURRENT_SOURCE_DIR}/mangosd.conf.dist.in\" \"$<TARGET_FILE_DIR:${EXECUTABLE_NAME}>/mangosd.conf.dist\")
-endif()
-
-if(UNIX)
-  target_link_libraries(${EXECUTABLE_NAME}
-    ${OPENSSL_LIBRARIES}
-    ${OPENSSL_EXTRA_LIBRARIES}
-  )
-
-  if(POSTGRESQL AND POSTGRESQL_FOUND)
-    target_link_libraries(${EXECUTABLE_NAME} ${PostgreSQL_LIBRARIES})
-  else()
-    target_link_libraries(${EXECUTABLE_NAME} ${MYSQL_LIBRARY})
-  endif()
 endif()
 
 set(EXECUTABLE_LINK_FLAGS "")

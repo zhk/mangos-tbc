@@ -21,7 +21,7 @@ SDComment: Timers will need adjustments.
 SDCategory: Tempest Keep, The Arcatraz
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "arcatraz.h"
 
 enum
@@ -100,13 +100,13 @@ struct boss_harbinger_skyrissAI : public ScriptedAI
 
     void JustSummoned(Creature* pSummoned) override
     {
-        if (m_creature->getVictim())
-            pSummoned->AI()->AttackStart(m_creature->getVictim());
+        if (m_creature->GetVictim())
+            pSummoned->AI()->AttackStart(m_creature->GetVictim());
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Check if creature is below 66% or 33%; Also don't allow it to split the third time
@@ -119,9 +119,9 @@ struct boss_harbinger_skyrissAI : public ScriptedAI
 
         if (m_uiMindRendTimer < uiDiff)
         {
-            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1);
+            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER);
             if (!pTarget)
-                pTarget = m_creature->getVictim();
+                pTarget = m_creature->GetVictim();
 
             if (DoCastSpellIfCan(pTarget, m_bIsRegularMode ? SPELL_MIND_REND : SPELL_MIND_REND_H) == CAST_OK)
                 m_uiMindRendTimer = 8000;
@@ -131,9 +131,9 @@ struct boss_harbinger_skyrissAI : public ScriptedAI
 
         if (m_uiFearTimer < uiDiff)
         {
-            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1);
+            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER);
             if (!pTarget)
-                pTarget = m_creature->getVictim();
+                pTarget = m_creature->GetVictim();
 
             if (DoCastSpellIfCan(pTarget, SPELL_FEAR) == CAST_OK)
             {
@@ -162,9 +162,9 @@ struct boss_harbinger_skyrissAI : public ScriptedAI
         {
             if (m_uiManaBurnTimer < uiDiff)
             {
-                Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1);
+                Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER | SELECT_FLAG_POWER_MANA);
                 if (!pTarget)
-                    pTarget = m_creature->getVictim();
+                    pTarget = m_creature->GetVictim();
 
                 if (DoCastSpellIfCan(pTarget, SPELL_MANA_BURN_H) == CAST_OK)
                     m_uiManaBurnTimer = urand(16000, 32000);
@@ -177,16 +177,14 @@ struct boss_harbinger_skyrissAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_harbinger_skyriss(Creature* pCreature)
+UnitAI* GetAI_boss_harbinger_skyriss(Creature* pCreature)
 {
     return new boss_harbinger_skyrissAI(pCreature);
 }
 
 void AddSC_boss_harbinger_skyriss()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_harbinger_skyriss";
     pNewScript->GetAI = &GetAI_boss_harbinger_skyriss;
     pNewScript->RegisterSelf();

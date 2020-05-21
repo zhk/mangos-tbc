@@ -25,7 +25,7 @@
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 #include "Server/DBCStores.h"
 
-DynamicObject::DynamicObject() : WorldObject(), m_spellId(0), m_effIndex(), m_aliveDuration(0), m_radius(0), m_positive(false)
+DynamicObject::DynamicObject() : WorldObject(), m_spellId(0), m_effIndex(), m_aliveDuration(0), m_radius(0), m_positive(false), m_target()
 {
     m_objectType |= TYPEMASK_DYNAMICOBJECT;
     m_objectTypeId = TYPEID_DYNAMICOBJECT;
@@ -56,7 +56,7 @@ void DynamicObject::RemoveFromWorld()
     Object::RemoveFromWorld();
 }
 
-bool DynamicObject::Create(uint32 guidlow, Unit* caster, uint32 spellId, SpellEffectIndex effIndex, float x, float y, float z, int32 duration, float radius, DynamicObjectType type)
+bool DynamicObject::Create(uint32 guidlow, Unit* caster, uint32 spellId, SpellEffectIndex effIndex, float x, float y, float z, int32 duration, float radius, DynamicObjectType type, SpellTarget target, int32 damage, int32 basePoints)
 {
     WorldObject::_Create(guidlow, HIGHGUID_DYNAMICOBJECT);
     SetMap(caster->GetMap());
@@ -105,6 +105,9 @@ bool DynamicObject::Create(uint32 guidlow, Unit* caster, uint32 spellId, SpellEf
     m_effIndex = effIndex;
     m_spellId = spellId;
     m_positive = IsPositiveEffect(spellProto, m_effIndex);
+    m_target = target;
+    m_damage = damage;
+    m_basePoints = basePoints;
 
     return true;
 }
@@ -115,7 +118,7 @@ Unit* DynamicObject::GetCaster() const
     return ObjectAccessor::GetUnit(*this, GetCasterGuid());
 }
 
-void DynamicObject::Update(uint32 /*update_diff*/, uint32 p_time)
+void DynamicObject::Update(const uint32 diff)
 {
     // caster can be not in world at time dynamic object update, but dynamic object not yet deleted in Unit destructor
     Unit* caster = GetCaster();
@@ -127,8 +130,8 @@ void DynamicObject::Update(uint32 /*update_diff*/, uint32 p_time)
 
     bool deleteThis = false;
 
-    if (m_aliveDuration > int32(p_time))
-        m_aliveDuration -= p_time;
+    if (m_aliveDuration > int32(diff))
+        m_aliveDuration -= diff;
     else
         deleteThis = true;
 
@@ -193,7 +196,7 @@ void DynamicObject::Delay(int32 delaytime)
     }
 }
 
-bool DynamicObject::isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool inVisibleList) const
+bool DynamicObject::isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool /*inVisibleList*/) const
 {
     if (!IsInWorld() || !u->IsInWorld())
         return false;
@@ -203,23 +206,7 @@ bool DynamicObject::isVisibleForInState(Player const* u, WorldObject const* view
         return true;
 
     // normal case
-    return IsWithinDistInMap(viewPoint, GetMap()->GetVisibilityDistance() + (inVisibleList ? World::GetVisibleObjectGreyDistance() : 0.0f), false);
-}
-
-bool DynamicObject::IsHostileTo(Unit const* unit) const
-{
-    if (Unit* owner = GetCaster())
-        return owner->IsHostileTo(unit);
-    else
-        return false;
-}
-
-bool DynamicObject::IsFriendlyTo(Unit const* unit) const
-{
-    if (Unit* owner = GetCaster())
-        return owner->IsFriendlyTo(unit);
-    else
-        return true;
+    return IsWithinDistInMap(viewPoint, GetVisibilityData().GetVisibilityDistance(), false);
 }
 
 void DynamicObject::OnPersistentAreaAuraEnd()
@@ -229,6 +216,10 @@ void DynamicObject::OnPersistentAreaAuraEnd()
         case 30632: // Magtheridon - Debris
             if (Unit* owner = GetCaster())
                 owner->CastSpell(nullptr, 30631, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, GetObjectGuid());
+            break;
+        case 32286: // Shirakk - Focus fire
+            if (Unit* owner = GetCaster())
+                owner->CastSpell(nullptr, 32301, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, GetObjectGuid());
             break;
     }
 }

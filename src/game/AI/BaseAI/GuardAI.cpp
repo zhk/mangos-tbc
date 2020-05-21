@@ -36,13 +36,13 @@ GuardAI::GuardAI(Creature* creature) : CreatureAI(creature)
 void GuardAI::MoveInLineOfSight(Unit* who)
 {
     // Ignore Z for flying creatures
-    if (!m_creature->CanFly() && m_creature->GetDistanceZ(who) > CREATURE_Z_ATTACK_RANGE)
+    if (!m_creature->CanFly() && who->IsFlying() && m_creature->GetDistanceZ(who) > (IsRangedUnit() ? CREATURE_Z_ATTACK_RANGE_RANGED : CREATURE_Z_ATTACK_RANGE_MELEE))
         return;
 
-    if (m_creature->getVictim())
+    if (m_creature->GetVictim())
         return;
 
-    if (who->isInCombat() && m_creature->CanAssist(who))
+    if (who->IsInCombat() && m_creature->CanAssist(who))
     {
         Unit* victim = who->getAttackerForHelper();
 
@@ -92,8 +92,8 @@ void GuardAI::MoveInLineOfSight(Unit* who)
 
 void GuardAI::UpdateAI(const uint32 /*diff*/)
 {
-    // update i_victimGuid if i_creature.getVictim() !=0 and changed
-    if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+    // update i_victimGuid if i_creature.GetVictim() !=0 and changed
+    if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         return;
 
     DoMeleeAttackIfReady();

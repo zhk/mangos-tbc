@@ -74,6 +74,7 @@ void WaypointMovementGenerator<Creature>::InitializeWaypointPath(Creature& u, in
     i_nextMoveTime.Reset(initialDelay);
     // Start moving if possible
     StartMove(u);
+    u.GetPosition(m_resetPoint);
 }
 
 void WaypointMovementGenerator<Creature>::Finalize(Creature& creature)
@@ -84,6 +85,13 @@ void WaypointMovementGenerator<Creature>::Finalize(Creature& creature)
 
 void WaypointMovementGenerator<Creature>::Interrupt(Creature& creature)
 {
+    // be sure we are not already interrupted before saving current pos
+    if (creature.hasUnitState(UNIT_STAT_ROAMING))
+    {
+        // save the current position in case of reset
+        creature.GetPosition(m_resetPoint);
+    }
+
     creature.InterruptMoving();
     creature.clearUnitState(UNIT_STAT_ROAMING | UNIT_STAT_ROAMING_MOVE);
     creature.SetWalk(!creature.hasUnitState(UNIT_STAT_RUNNING_STATE), false);
@@ -122,21 +130,23 @@ void WaypointMovementGenerator<Creature>::OnArrived(Creature& creature)
     if (creature.AI())
     {
         uint32 type = WAYPOINT_MOTION_TYPE;
-        if (m_PathOrigin == PATH_FROM_EXTERNAL && m_pathId > 0)
-            type = EXTERNAL_WAYPOINT_MOVE + m_pathId;
-        creature.AI()->MovementInform(type, i_currentNode);
-
-        if (creature.IsTemporarySummon())
-        {
-            if (creature.GetSpawnerGuid().IsCreatureOrPet())
-                if (Creature* pSummoner = creature.GetMap()->GetAnyTypeCreature(creature.GetSpawnerGuid()))
-                    if (pSummoner->AI())
-                        pSummoner->AI()->SummonedMovementInform(&creature, type, i_currentNode);
-        }
+        if (m_PathOrigin == PATH_FROM_EXTERNAL)
+            type = EXTERNAL_WAYPOINT_MOVE;
+        InformAI(creature, type, i_currentNode);
     }
 
+    // save position and orientation in case of GetResetPosition() call
+    creature.GetPosition(m_resetPoint);
+
+    // AI can modify node delay so we have to compute it
+    int32 newWaitTime = node.delay + m_scriptTime;
+    m_scriptTime = 0;
+
+    // be sure to not have negative value for wait time
+    newWaitTime = newWaitTime > 0 ? newWaitTime : 0;
+
     // Wait delay ms
-    Stop(node.delay);
+    Stop(newWaitTime);
 }
 
 void WaypointMovementGenerator<Creature>::StartMove(Creature& creature)
@@ -147,7 +157,7 @@ void WaypointMovementGenerator<Creature>::StartMove(Creature& creature)
     if (Stopped(creature))
         return;
 
-    if (!creature.isAlive() || creature.hasUnitState(UNIT_STAT_NOT_MOVE))
+    if (!creature.IsAlive() || creature.hasUnitState(UNIT_STAT_NOT_MOVE))
         return;
 
     WaypointPath::const_iterator currPoint = i_path->find(i_currentNode);
@@ -164,14 +174,17 @@ void WaypointMovementGenerator<Creature>::StartMove(Creature& creature)
         }
 
         // Inform AI
-        if (creature.AI() && m_PathOrigin == PATH_FROM_EXTERNAL &&  m_pathId > 0)
+        if (creature.AI() && m_PathOrigin == PATH_FROM_EXTERNAL)
         {
+            uint32 type;
             if (!reachedLast)
-                creature.AI()->MovementInform(EXTERNAL_WAYPOINT_MOVE_START + m_pathId, currPoint->first);
+                type = EXTERNAL_WAYPOINT_MOVE_START;
             else
-                creature.AI()->MovementInform(EXTERNAL_WAYPOINT_FINISHED_LAST + m_pathId, currPoint->first);
+                type = EXTERNAL_WAYPOINT_FINISHED_LAST;
 
-            if (creature.isDead() || !creature.IsInWorld()) // Might have happened with above calls
+            InformAI(creature, type, currPoint->first);
+
+            if (creature.IsDead() || !creature.IsInWorld()) // Might have happened with above calls
                 return;
         }
 
@@ -182,14 +195,90 @@ void WaypointMovementGenerator<Creature>::StartMove(Creature& creature)
 
     creature.addUnitState(UNIT_STAT_ROAMING_MOVE);
 
-    WaypointNode const& nextNode = currPoint->second;;
+    WaypointNode const& nextNode = currPoint->second;
+
+    // will contain generated path
+    PointsArray genPath;
+    genPath.reserve(20);    // little optimization
+
+    PathFinder pf(&creature);
+
+    // compute path to next node and put it in the path
+    pf.calculate(nextNode.x, nextNode.y, nextNode.z, true);
+    genPath.insert(genPath.end(), pf.getPath().begin(), pf.getPath().end());
+
+    // make sure to reset spline index as its new path
+    m_nextNodeSplineIdx = -1;
+
+    // if creature should not stop at current node reach
+    if (!nextNode.delay)
+    {
+        // we'll add path to node after this one too to make animation more smoother
+        m_nextNodeSplineIdx = genPath.size() - 1;
+        auto nodeAfterItr = currPoint;
+        ++nodeAfterItr;
+        if (nodeAfterItr == i_path->end())
+            nodeAfterItr = i_path->begin();
+
+        auto const& nodeAfter = nodeAfterItr->second;
+
+        // extend path only if next node is different than current node
+        if (nodeAfterItr != currPoint)
+        {
+            Vector3 nodeAfterCoord(nodeAfter.x, nodeAfter.y, nodeAfter.z);
+
+            // startPoint should contain current node destination that we are about to reach
+            Vector3 startPoint = genPath.back();
+
+            // we add artificially a point in the direction of next destination to avoid client making shortcut and avoiding current node destination
+            Vector3 intPoint = startPoint.lerp(nodeAfterCoord, 0.1f);
+            genPath.push_back(intPoint);
+            creature.UpdateAllowedPositionZ(intPoint.x, intPoint.y, intPoint.z);
+
+            // avoid computing path for near nodes
+            if ((nodeAfterCoord - startPoint).squaredMagnitude() > 10)
+            {
+                // compute path to next node from intermediate point and add it to generated path
+                pf.calculate(intPoint, nodeAfterCoord, true);
+                genPath.insert(genPath.end(), pf.getPath().begin() + 1, pf.getPath().end());
+            }
+            else
+            {
+                // add only node coord as we are near enough of it
+                genPath.push_back(nodeAfterCoord);
+            }
+        }
+        else
+        {
+            // db dev seem to use one wp for some specific script without delay
+            sLog.outErrorDb("WaypointMovementGenerator::StartMove()> creature %s have only one wp and without any delay. Delay forced to 5 sec!",
+                creature.GetGuidStr().c_str());
+
+            // force delay
+            Stop(5000);
+        }
+    }
+
+    // send path to client
     Movement::MoveSplineInit init(creature);
-    init.MoveTo(nextNode.x, nextNode.y, nextNode.z, true);
+    init.MovebyPath(genPath);
 
     if (nextNode.orientation != 100 && nextNode.delay != 0)
         init.SetFacing(nextNode.orientation);
     creature.SetWalk(!creature.hasUnitState(UNIT_STAT_RUNNING_STATE) && !creature.IsLevitating(), false);
     init.Launch();
+}
+
+void WaypointMovementGenerator<Creature>::InformAI(Creature& creature, uint32 type, uint32 data)
+{
+    creature.AI()->MovementInform(type, data);
+    if (creature.IsTemporarySummon())
+    {
+        if (creature.GetSpawnerGuid().IsCreatureOrPet())
+            if (Creature* pSummoner = creature.GetMap()->GetAnyTypeCreature(creature.GetSpawnerGuid()))
+                if (pSummoner->AI())
+                    pSummoner->AI()->SummonedMovementInform(&creature, type, data);
+    }
 }
 
 bool WaypointMovementGenerator<Creature>::Update(Creature& creature, const uint32& diff)
@@ -218,10 +307,11 @@ bool WaypointMovementGenerator<Creature>::Update(Creature& creature, const uint3
     {
         if (creature.IsStopped())
             Stop(STOP_TIME_FOR_PLAYER);
-        else if (creature.movespline->Finalized())
+        else if (creature.movespline->Finalized() ||(m_nextNodeSplineIdx >= 0 && creature.movespline->currentPathIdx() >= m_nextNodeSplineIdx))
         {
-            OnArrived(creature);
-            StartMove(creature);
+            // we arrived to a node either by movespline finalized or node reached while creature continue to move
+            OnArrived(creature);        // fire script events
+            StartMove(creature);        // restart movement if needed
         }
     }
     return true;
@@ -243,6 +333,12 @@ bool WaypointMovementGenerator<Creature>::CanMove(int32 diff, Creature& u)
 
 bool WaypointMovementGenerator<Creature>::GetResetPosition(Creature&, float& x, float& y, float& z, float& o) const
 {
+    x = m_resetPoint.coord_x;
+    y = m_resetPoint.coord_y;
+    z = m_resetPoint.coord_z;
+    o = m_resetPoint.orientation;
+
+    return true;
     // prevent a crash at empty waypoint path.
     if (!i_path || i_path->empty())
         return false;
@@ -293,9 +389,15 @@ void WaypointMovementGenerator<Creature>::AddToWaypointPauseTime(int32 waitTimeD
 {
     if (!i_nextMoveTime.Passed())
     {
+        // creature is stopped already
         // Prevent <= 0, the code in Update requires to catch the change from moving to not moving
         int32 newWaitTime = i_nextMoveTime.GetExpiry() + waitTimeDiff;
         i_nextMoveTime.Reset(newWaitTime > 0 ? newWaitTime : 1);
+    }
+    else
+    {
+        // creature is not stopped yet (script with 0 delay may be calling this)
+        m_scriptTime = waitTimeDiff;
     }
 }
 
@@ -317,233 +419,4 @@ bool WaypointMovementGenerator<Creature>::SetNextWaypoint(uint32 pointId)
     // Set the point
     i_currentNode = pointId;
     return true;
-}
-
-//----------------------------------------------------//
-uint32 FlightPathMovementGenerator::GetPathAtMapEnd() const
-{
-    if (i_currentNode >= i_path.size())
-        return i_path.size();
-
-    uint32 curMapId = i_path[i_currentNode]->mapid;
-
-    for (uint32 i = i_currentNode; i < i_path.size(); ++i)
-    {
-        if (i_path[i]->mapid != curMapId)
-            return i;
-    }
-
-    return i_path.size();
-}
-
-#define SKIP_SPLINE_POINT_DISTANCE_SQ (40.0f * 40.0f)
-
-bool IsNodeIncludedInShortenedPath(TaxiPathNodeEntry const* p1, TaxiPathNodeEntry const* p2)
-{
-    return p1->mapid != p2->mapid || std::pow(p1->x - p2->x, 2) + std::pow(p1->y - p2->y, 2) > SKIP_SPLINE_POINT_DISTANCE_SQ;
-}
-
-void FlightPathMovementGenerator::LoadPath(Player& player)
-{
-    _pointsForPathSwitch.clear();
-    std::deque<uint32> const& taxi = player.m_taxi.GetPath();
-    for (uint32 src = 0, dst = 1; dst < taxi.size(); src = dst++)
-    {
-        uint32 path, cost;
-        sObjectMgr.GetTaxiPath(taxi[src], taxi[dst], path, cost); // Need to add support for reputation cost discount
-        if (path > sTaxiPathNodesByPath.size())
-            return;
-
-        TaxiPathNodeList const& nodes = sTaxiPathNodesByPath[path];
-        if (!nodes.empty())
-        {
-            TaxiPathNodeEntry const* start = nodes[0];
-            TaxiPathNodeEntry const* end = nodes[nodes.size() - 1];
-            bool passedPreviousSegmentProximityCheck = false;
-            for (uint32 i = 0; i < nodes.size(); ++i)
-            {
-                if (passedPreviousSegmentProximityCheck || !src || i_path.empty() || IsNodeIncludedInShortenedPath(i_path[i_path.size() - 1], nodes[i]))
-                {
-                    if ((!src || (IsNodeIncludedInShortenedPath(start, nodes[i]) && i >= 2)) &&
-                            (dst == taxi.size() - 1 || (IsNodeIncludedInShortenedPath(end, nodes[i]) && i < nodes.size() - 1)))
-                    {
-                        passedPreviousSegmentProximityCheck = true;
-                        i_path.push_back(nodes[i]);
-                    }
-                }
-                else
-                {
-                    i_path.pop_back();
-                    --_pointsForPathSwitch.back().PathIndex;
-                }
-            }
-        }
-
-        _pointsForPathSwitch.push_back({ uint32(i_path.size() - 1), int32(cost) });
-    }
-}
-
-void FlightPathMovementGenerator::Initialize(Player& player)
-{
-    Reset(player);
-}
-
-void FlightPathMovementGenerator::Finalize(Player& player)
-{
-    // remove flag to prevent send object build movement packets for flight state and crash (movement generator already not at top of stack)
-    player.clearUnitState(UNIT_STAT_TAXI_FLIGHT);
-
-    player.Unmount();
-    player.RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_CLIENT_CONTROL_LOST | UNIT_FLAG_TAXI_FLIGHT);
-    player.UpdateClientControl(&player, true);
-
-    if (player.m_taxi.GetLastNode() == player.m_taxi.GetFinalTaxiDestination())
-    {
-        player.m_taxi.NextTaxiDestination(); // successfully reached end and pop final point
-        player.getHostileRefManager().setOnlineOfflineState(true);
-        if (player.pvpInfo.inPvPEnforcedArea)
-            player.CastSpell(&player, 2479, TRIGGERED_OLD_TRIGGERED);
-
-        TaxiNodesEntry const* node = sTaxiNodesStore.LookupEntry(player.m_taxi.GetLastNode());
-        player.TeleportTo(player.GetMap()->GetId(), node->x, node->y, node->z, player.GetOrientation());
-
-        // update z position to ground and orientation for landing point
-        // this prevent cheating with landing  point at lags
-        // when client side flight end early in comparison server side
-        player.SetFallInformation(0, player.GetPositionZ());
-        player.StopMoving(true);
-
-        OnFlightPathEnd(player, player.m_taxi.GetLastNode());
-    }
-    else
-        sLog.outError("Flight path finalized in non-final point. Investigate causes. Destination: %d. Player name: %s.", player.m_taxi.GetNextTaxiDestination(), player.GetName());
-}
-
-void FlightPathMovementGenerator::Interrupt(Player& player)
-{
-    player.clearUnitState(UNIT_STAT_TAXI_FLIGHT);
-}
-
-#define PLAYER_FLIGHT_SPEED        32.0f
-
-void FlightPathMovementGenerator::Reset(Player& player)
-{
-    player.getHostileRefManager().setOnlineOfflineState(false);
-    player.addUnitState(UNIT_STAT_TAXI_FLIGHT);
-    player.UpdateClientControl(&player, false);
-    player.SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_CLIENT_CONTROL_LOST | UNIT_FLAG_TAXI_FLIGHT);
-
-    Movement::MoveSplineInit init(player);
-    uint32 end = GetPathAtMapEnd();
-    for (uint32 i = GetCurrentNode(); i != end; ++i)
-    {
-        G3D::Vector3 vertice(i_path[i]->x, i_path[i]->y, i_path[i]->z);
-        init.Path().push_back(vertice);
-    }
-    init.SetFirstPointId(GetCurrentNode());
-    init.SetFly();
-    init.SetVelocity(PLAYER_FLIGHT_SPEED);
-    init.Launch();
-}
-
-bool FlightPathMovementGenerator::Update(Player& player, const uint32& /*diff*/)
-{
-    uint32 pointId = (uint32)player.movespline->currentPathIdx();
-    if (pointId > i_currentNode)
-    {
-        bool departureEvent = true;
-        do
-        {
-            DoEventIfAny(player, i_path[i_currentNode], departureEvent);
-            while (!_pointsForPathSwitch.empty() && _pointsForPathSwitch.front().PathIndex <= i_currentNode)
-            {
-                _pointsForPathSwitch.pop_front();
-                player.m_taxi.NextTaxiDestination();
-                if (!_pointsForPathSwitch.empty())
-                {
-                    player.ModifyMoney(-_pointsForPathSwitch.front().Cost);
-                }
-            }
-
-            if (pointId == i_currentNode)
-                break;
-            i_currentNode += (uint32)departureEvent;
-            departureEvent = !departureEvent;
-        }
-        while (true);
-    }
-
-    const bool flying = (i_currentNode < (i_path.size() - 1));
-
-    // Multi-map flight paths
-    if (flying && i_path[i_currentNode + 1]->mapid != player.GetMapId())
-    {
-        // short preparations to continue flight
-        Interrupt(player);                // will reset at map landing
-        SetCurrentNodeAfterTeleport();
-        TaxiPathNodeEntry const* node = i_path[i_currentNode];
-        SkipCurrentNode();
-        player.TeleportTo(node->mapid, node->x, node->y, node->z, player.GetOrientation());
-    }
-
-    return flying;
-}
-
-void FlightPathMovementGenerator::SetCurrentNodeAfterTeleport()
-{
-    if (i_path.empty())
-        return;
-
-    uint32 map0 = i_path[0]->mapid;
-
-    for (size_t i = 1; i < i_path.size(); ++i)
-    {
-        if (i_path[i]->mapid != map0)
-        {
-            i_currentNode = i;
-            return;
-        }
-    }
-}
-
-void FlightPathMovementGenerator::DoEventIfAny(Player& player, TaxiPathNodeEntry const* node, bool departure)
-{
-    if (uint32 eventid = departure ? node->departureEventID : node->arrivalEventID)
-    {
-        DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "Taxi %s event %u of node %u of path %u for player %s", departure ? "departure" : "arrival", eventid, node->index, node->path, player.GetName());
-        StartEvents_Event(player.GetMap(), eventid, &player, &player, departure);
-    }
-}
-
-bool FlightPathMovementGenerator::GetResetPosition(Player&, float& x, float& y, float& z, float& o) const
-{
-    const TaxiPathNodeEntry* node = i_path[i_currentNode];
-    x = node->x;
-    y = node->y;
-    z = node->z;
-
-    return true;
-}
-
-/*
-NOTE: Blizzard clearly has some extra scripts on certain fly path ends. Nodes contain extra events, that can be done using dbscript_on_event,
-but these extra scripts have no EventID in the DBC. In future if this place fills up, need to consider moving it to a more generic way of scripting.
-*/
-void FlightPathMovementGenerator::OnFlightPathEnd(Player& player, uint32 finalNode)
-{
-    switch (finalNode)
-    {
-        //case 2:         // Stormwind
-        //    player.TeleportTo();
-        //    break;
-        case 91:        // Susurrus
-            player.RemoveAurasDueToSpell(32474);
-            break;
-        case 158:        // Vision Guide
-            player.AreaExploredOrEventHappens(10525);
-            player.RemoveAurasDueToSpell(36573);
-            break;
-        default:
-            break;
-    }
 }

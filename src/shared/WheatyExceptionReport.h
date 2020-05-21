@@ -1,14 +1,10 @@
 #ifndef _WHEATYEXCEPTIONREPORT_
 #define _WHEATYEXCEPTIONREPORT_
 
+#pragma warning(push)
+#pragma warning(disable:4091)
 #include <dbghelp.h>
-
-#if _MSC_VER < 1400
-#   define countof(array)   (sizeof(array) / sizeof(array[0]))
-#else
-#   include <stdlib.h>
-#   define countof  _countof
-#endif                                                      // _MSC_VER < 1400
+#pragma warning(pop)
 
 enum BasicType                                              // Stolen from CVCONST.H in the DIA 2.0 SDK
 {
@@ -104,7 +100,7 @@ class WheatyExceptionReport
 
         static BasicType GetBasicType(DWORD typeIndex, DWORD64 modBase);
 
-        static int __cdecl _tprintf(const TCHAR* format, ...);
+        static int _tprintf(const TCHAR* format, ...);
 
         // Variables used by the class
         static TCHAR m_szLogFileName[MAX_PATH];

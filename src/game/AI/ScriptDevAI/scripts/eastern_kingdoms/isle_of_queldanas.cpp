@@ -25,7 +25,7 @@ EndScriptData */
 npc_converted_sentry
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 /*######
 ## npc_converted_sentry
@@ -71,16 +71,14 @@ struct npc_converted_sentryAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_converted_sentry(Creature* pCreature)
+UnitAI* GetAI_npc_converted_sentry(Creature* pCreature)
 {
     return new npc_converted_sentryAI(pCreature);
 }
 
 void AddSC_isle_of_queldanas()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_converted_sentry";
     pNewScript->GetAI = &GetAI_npc_converted_sentry;
     pNewScript->RegisterSelf();

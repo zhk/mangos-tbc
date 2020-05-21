@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Coilfang Resevoir, Slave Pens
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "slave_pens.h"
 
 instance_slave_pens::instance_slave_pens(Map* map) : ScriptedInstance(map), m_naturalistYelled(false)
@@ -37,7 +37,7 @@ void instance_slave_pens::Initialize()
 void instance_slave_pens::SetData(uint32 type, uint32 data)
 {
     if (type == DATA_NATURALIST)
-        m_naturalistYelled = bool(data);
+        m_naturalistYelled = data != 0;
 }
 
 uint32 instance_slave_pens::GetData(uint32 type) const
@@ -53,7 +53,6 @@ void instance_slave_pens::OnCreatureCreate(Creature* creature)
     switch (creature->GetEntry())
     {
         case NPC_NATURALIST_BITE:
-        case NPC_NATURALIST_BITE_H:
             m_npcEntryGuidStore[creature->GetEntry()] = creature->GetObjectGuid();
             break;
     }
@@ -83,7 +82,7 @@ bool AreaTrigger_at_naturalist_bite(Player* player, AreaTriggerEntry const* /*pA
     ScriptedInstance* instance = (ScriptedInstance*)player->GetMap()->GetInstanceData();
     if (instance->GetData(DATA_NATURALIST) == 0)
     {
-        if (Unit* naturalist = instance->GetSingleCreatureFromStorage(player->GetMap()->IsRegularDifficulty() ? NPC_NATURALIST_BITE : NPC_NATURALIST_BITE_H))
+        if (Unit* naturalist = instance->GetSingleCreatureFromStorage(NPC_NATURALIST_BITE))
         {
             DoScriptText(SAY_AREATRIGGER, naturalist, player);
         }
@@ -104,9 +103,7 @@ bool GossipHello_npc_naturalist_bite(Player* player, Creature* creature)
 
 void AddSC_instance_slave_pens()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_slave_pens";
     pNewScript->GetInstanceData = &GetInstanceData_instance_slave_pens;
     pNewScript->RegisterSelf();

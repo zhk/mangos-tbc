@@ -21,7 +21,7 @@ SDComment: Small adjustments; Timers
 SDCategory: Caverns of Time, The Dark Portal
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "dark_portal.h"
 
 enum
@@ -32,6 +32,9 @@ enum
     SAY_SLAY2               = -1269016,
     SAY_DEATH               = -1269017,
     EMOTE_GENERIC_FRENZY    = -1000002,
+
+    SPELL_THRASH            = 8876,
+    SPELL_DOUBLE_ATTACK     = 19818,
 
     SPELL_CLEAVE            = 40504,
     SPELL_TIME_STOP         = 31422,
@@ -63,6 +66,8 @@ struct boss_aeonusAI : public ScriptedAI
         m_uiTimeStopTimer   = urand(10000, 15000);
         m_uiFrenzyTimer     = urand(30000, 45000);
         m_uiCleaveTimer     = urand(5000, 9000);
+
+        DoCastSpellIfCan(m_creature, m_bIsRegularMode ? SPELL_THRASH : SPELL_DOUBLE_ATTACK, CAST_TRIGGERED | CAST_AURA_NOT_PRESENT);
     }
 
     void Aggro(Unit* /*pWho*/) override
@@ -98,7 +103,7 @@ struct boss_aeonusAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Sand Breath
@@ -122,7 +127,7 @@ struct boss_aeonusAI : public ScriptedAI
         // Cleave
         if (m_uiCleaveTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CLEAVE) == CAST_OK)
                 m_uiCleaveTimer = urand(7000, 12000);
         }
         else
@@ -144,16 +149,14 @@ struct boss_aeonusAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_aeonus(Creature* pCreature)
+UnitAI* GetAI_boss_aeonus(Creature* pCreature)
 {
     return new boss_aeonusAI(pCreature);
 }
 
 void AddSC_boss_aeonus()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_aeonus";
     pNewScript->GetAI = &GetAI_boss_aeonus;
     pNewScript->RegisterSelf();

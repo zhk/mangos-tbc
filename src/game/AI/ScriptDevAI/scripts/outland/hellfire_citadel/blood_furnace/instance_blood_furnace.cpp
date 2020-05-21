@@ -21,13 +21,14 @@ SDComment:
 SDCategory: Blood Furnace
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "blood_furnace.h"
 
 instance_blood_furnace::instance_blood_furnace(Map* pMap) : ScriptedInstance(pMap),
     m_uiBroggokEventTimer(90 * IN_MILLISECONDS),
     m_uiBroggokEventPhase(0),
-    m_uiRandYellTimer(90000)
+    m_uiRandYellTimer(90000),
+    m_firstPlayer(false)
 {
     Initialize();
 }
@@ -43,8 +44,6 @@ void instance_blood_furnace::OnCreatureCreate(Creature* pCreature)
     {
         case NPC_BROGGOK:
             pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
-            pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
-            pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
         case NPC_KELIDAN_THE_BREAKER:
         case NPC_MAGTHERIDON:
             m_npcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
@@ -135,7 +134,7 @@ void instance_blood_furnace::SetData(uint32 uiType, uint32 uiData)
                 {
                     m_uiBroggokEventPhase = 0;
 
-                    if (m_aBroggokEvent[0].m_sSortedOrcGuids.size() == 0)
+                    if (m_aBroggokEvent[0].m_sSortedOrcGuids.empty())
                         DoSortBroggokOrcs();
     
                     // open first cage
@@ -147,20 +146,20 @@ void instance_blood_furnace::SetData(uint32 uiType, uint32 uiData)
                 // On wipe we reset only the orcs; if the party wipes at the boss itself then the orcs don't reset
                 if (m_uiBroggokEventPhase <= MAX_ORC_WAVES)
                 {
-                    for (uint8 i = 0; i < MAX_ORC_WAVES; ++i)
+                    for (auto& i : m_aBroggokEvent)
                     {
                         // Reset Orcs
-                        if (!m_aBroggokEvent[i].m_bIsCellOpened)
+                        if (!i.m_bIsCellOpened)
                             continue;
 
-                        m_aBroggokEvent[i].m_uiKilledOrcCount = 0;
-                        for (GuidSet::const_iterator itr = m_aBroggokEvent[i].m_sSortedOrcGuids.begin(); itr != m_aBroggokEvent[i].m_sSortedOrcGuids.end(); ++itr)
+                        i.m_uiKilledOrcCount = 0;
+                        for (GuidSet::const_iterator itr = i.m_sSortedOrcGuids.begin(); itr != i.m_sSortedOrcGuids.end(); ++itr)
                         {
                             if (Creature* pOrc = instance->GetCreature(*itr))
                             {
-                                pOrc->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE + UNIT_FLAG_NOT_SELECTABLE);
+                                pOrc->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
                                 
-                                if (pOrc->isAlive())
+                                if (pOrc->IsAlive())
                                     pOrc->ForcedDespawn();
                                  
                                 pOrc->Respawn();
@@ -168,8 +167,8 @@ void instance_blood_furnace::SetData(uint32 uiType, uint32 uiData)
                         }
 
                         // Close Door
-                        DoUseDoorOrButton(m_aBroggokEvent[i].m_cellGuid);
-                        m_aBroggokEvent[i].m_bIsCellOpened = false;
+                        DoUseDoorOrButton(i.m_cellGuid);
+                        i.m_bIsCellOpened = false;
                     }
  
                     if (m_lLeverGO)
@@ -208,6 +207,33 @@ void instance_blood_furnace::SetData(uint32 uiType, uint32 uiData)
     }
 }
 
+void instance_blood_furnace::OnPlayerEnter(Player* /*player*/)
+{
+    if (!m_firstPlayer)
+    {
+        m_firstPlayer = true;
+        for (GuidList::const_iterator itr = m_luiNascentOrcGuids.begin(); itr != m_luiNascentOrcGuids.end(); ++itr)
+        {
+            if (Creature* pOrc = instance->GetCreature(*itr))
+            {
+                for (uint8 i = 0; i < MAX_ORC_WAVES; ++i)
+                {
+                    if (GameObject* pDoor = instance->GetGameObject(m_aBroggokEvent[i].m_cellGuid))
+                    {
+                        if (pOrc->IsWithinDistInMap(pDoor, 15.0f) && pOrc->GetPositionZ() < 15.0f)
+                        {
+                            pOrc->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE); // ones in cages
+                            pOrc->setFaction(14); // sniffed value
+                        }
+                    }
+                }
+                if (pOrc->GetPositionZ() > 20.0f) // ones above
+                    pOrc->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_NPC);
+            }
+        }
+    }
+}
+
 void instance_blood_furnace::DoNextBroggokEventPhase()
 {
     // Open door to the final boss now and move boss to the center of the room
@@ -218,8 +244,7 @@ void instance_blood_furnace::DoNextBroggokEventPhase()
         if (Creature* pBroggok = GetSingleCreatureFromStorage(NPC_BROGGOK))
         {
             pBroggok->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
-            pBroggok->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
-            pBroggok->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
+            pBroggok->SetWalk(false);
             pBroggok->GetMotionMaster()->MoveWaypoint();
         }
     }
@@ -231,11 +256,11 @@ void instance_blood_furnace::DoNextBroggokEventPhase()
 
         m_aBroggokEvent[m_uiBroggokEventPhase].m_bIsCellOpened = true;
 
-        for (GuidSet::const_iterator itr = m_aBroggokEvent[m_uiBroggokEventPhase].m_sSortedOrcGuids.begin(); itr != m_aBroggokEvent[m_uiBroggokEventPhase].m_sSortedOrcGuids.end(); ++itr)
+        for (auto m_sSortedOrcGuid : m_aBroggokEvent[m_uiBroggokEventPhase].m_sSortedOrcGuids)
         {
-            if (Creature* pOrc = instance->GetCreature(*itr))
+            if (Creature* pOrc = instance->GetCreature(m_sSortedOrcGuid))
             {
-                pOrc->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE + UNIT_FLAG_NON_ATTACKABLE);
+                pOrc->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
                 pOrc->SetInCombatWithZone();
             }
         }
@@ -300,7 +325,7 @@ void instance_blood_furnace::Update(uint32 uiDiff)
     if (m_auiEncounter[TYPE_BROGGOK_EVENT] == IN_PROGRESS)
         if (m_uiBroggokEventPhase <= MAX_ORC_WAVES)
         {
-            if (!GetPlayerInMap(true, true))
+            if (!GetPlayerInMap(true, false))
                 SetData(TYPE_BROGGOK_EVENT, FAIL);
             else if (!instance->IsRegularDifficulty())
             {
@@ -344,18 +369,11 @@ void instance_blood_furnace::Load(const char* chrIn)
     std::istringstream loadStream(chrIn);
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
-        if (m_auiEncounter[i] == IN_PROGRESS || m_auiEncounter[i] == FAIL)
-            m_auiEncounter[i] = NOT_STARTED;
+    for (uint32& i : m_auiEncounter)
+        if (i == IN_PROGRESS || i == FAIL)
+            i = NOT_STARTED;
 
     OUT_LOAD_INST_DATA_COMPLETE;
-
-    for (GuidList::const_iterator itr = m_luiNascentOrcGuids.begin(); itr != m_luiNascentOrcGuids.end(); ++itr)
-        if (Creature* pOrc = instance->GetCreature(*itr))
-            for (uint8 i = 0; i < MAX_ORC_WAVES; ++i)
-                if (GameObject* pDoor = instance->GetGameObject(m_aBroggokEvent[i].m_cellGuid))
-                    if (pOrc->IsWithinDistInMap(pDoor, 5.0f) && pOrc->GetPositionZ() < 10.0f)
-                        pOrc->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE);
 }
 
 // Sort all nascent orcs & fel orc neophytes in the instance in order to get only those near broggok doors
@@ -365,14 +383,14 @@ void instance_blood_furnace::DoSortBroggokOrcs()
     {
         if (Creature* pOrc = instance->GetCreature(*itr))
         {
-            for (uint8 i = 0; i < MAX_ORC_WAVES; ++i)
+            for (auto& i : m_aBroggokEvent)
             {
-                if (GameObject* pDoor = instance->GetGameObject(m_aBroggokEvent[i].m_cellGuid))
+                if (GameObject* pDoor = instance->GetGameObject(i.m_cellGuid))
                 {
-                    if (pOrc->IsWithinDistInMap(pDoor, 5.0f) && pOrc->GetPositionZ() < 10.0f)
+                    if (pOrc->IsWithinDistInMap(pDoor, 15.0f) && pOrc->GetPositionZ() < 15.0f)
                     {
-                        m_aBroggokEvent[i].m_sSortedOrcGuids.insert(pOrc->GetObjectGuid());
-                        if (!pOrc->isAlive())
+                        i.m_sSortedOrcGuids.insert(pOrc->GetObjectGuid());
+                        if (!pOrc->IsAlive())
                             pOrc->Respawn();
                         break;
                     }
@@ -409,9 +427,7 @@ bool GOUse_go_prison_cell_lever(Player* /*pPlayer*/, GameObject* pGo)
 
 void AddSC_instance_blood_furnace()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_blood_furnace";
     pNewScript->GetInstanceData = &GetInstanceData_instance_blood_furnace;
     pNewScript->RegisterSelf();

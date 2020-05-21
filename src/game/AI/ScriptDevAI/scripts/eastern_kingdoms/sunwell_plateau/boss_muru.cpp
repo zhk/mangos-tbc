@@ -21,7 +21,7 @@ SDComment: Small adjustments required
 SDCategory: Sunwell Plateau
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "sunwell_plateau.h"
 
 enum
@@ -119,11 +119,11 @@ struct boss_muruAI : public Scripted_NoMovementAI
             m_pInstance->SetData(TYPE_MURU, FAIL);
     }
 
-    void DamageTaken(Unit* /*pDoneBy*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDoneBy*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (uiDamage > m_creature->GetHealth())
+        if (damage > m_creature->GetHealth())
         {
-            uiDamage = 0;
+            damage = std::min(damage, m_creature->GetHealth() - 1);
 
             if (!m_bIsTransition)
             {
@@ -149,7 +149,7 @@ struct boss_muruAI : public Scripted_NoMovementAI
                 m_creature->ForcedDespawn(1000);
             // no break here; All other summons should behave the same way
             default:
-                pSummoned->AI()->AttackStart(m_creature->getVictim());
+                pSummoned->AI()->AttackStart(m_creature->GetVictim());
                 break;
         }
     }
@@ -183,7 +183,7 @@ struct boss_muruAI : public Scripted_NoMovementAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Return if already in transition
@@ -274,12 +274,12 @@ struct boss_entropiusAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiBlackHoleTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_SUMMON_BLACK_HOLE) == CAST_OK)
                     m_uiBlackHoleTimer = 15000;
@@ -290,7 +290,7 @@ struct boss_entropiusAI : public ScriptedAI
 
         if (m_uiDarknessTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_SUMMON_DARKNESS) == CAST_OK)
                     m_uiDarknessTimer = urand(15000, 20000);
@@ -482,36 +482,34 @@ struct npc_singularityAI : public Scripted_NoMovementAI
     }
 };
 
-CreatureAI* GetAI_boss_muru(Creature* pCreature)
+UnitAI* GetAI_boss_muru(Creature* pCreature)
 {
     return new boss_muruAI(pCreature);
 }
 
-CreatureAI* GetAI_boss_entropius(Creature* pCreature)
+UnitAI* GetAI_boss_entropius(Creature* pCreature)
 {
     return new boss_entropiusAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_portal_target(Creature* pCreature)
+UnitAI* GetAI_npc_portal_target(Creature* pCreature)
 {
     return new npc_portal_targetAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_darkness(Creature* pCreature)
+UnitAI* GetAI_npc_darkness(Creature* pCreature)
 {
     return new npc_darknessAI(pCreature);
 }
 
-CreatureAI* GetAI_npc_singularity(Creature* pCreature)
+UnitAI* GetAI_npc_singularity(Creature* pCreature)
 {
     return new npc_singularityAI(pCreature);
 }
 
 void AddSC_boss_muru()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_muru";
     pNewScript->GetAI = &GetAI_boss_muru;
     pNewScript->RegisterSelf();

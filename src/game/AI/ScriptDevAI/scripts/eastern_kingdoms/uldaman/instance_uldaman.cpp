@@ -22,7 +22,7 @@ SDCategory: Uldaman
 EndScriptData
 */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "uldaman.h"
 
 instance_uldaman::instance_uldaman(Map* pMap) : ScriptedInstance(pMap),
@@ -138,10 +138,10 @@ void instance_uldaman::Load(const char* chrIn)
     std::istringstream loadStream(chrIn);
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -209,7 +209,7 @@ void instance_uldaman::DoResetKeeperEvent()
     {
         if (Creature* pKeeper = instance->GetCreature(*itr))
         {
-            if (!pKeeper->isAlive())
+            if (!pKeeper->IsAlive())
                 pKeeper->Respawn();
         }
     }
@@ -217,13 +217,13 @@ void instance_uldaman::DoResetKeeperEvent()
 
 Creature* instance_uldaman::GetClosestDwarfNotInCombat(Creature* pSearcher)
 {
-    std::list<Creature*> lTemp;
+    CreatureList lTemp;
 
     for (GuidList::const_iterator itr = m_lWardens.begin(); itr != m_lWardens.end(); ++itr)
     {
         Creature* pTemp = instance->GetCreature(*itr);
 
-        if (pTemp && pTemp->isAlive() && !pTemp->getVictim())
+        if (pTemp && pTemp->IsAlive() && !pTemp->GetVictim())
             lTemp.push_back(pTemp);
     }
 
@@ -268,12 +268,12 @@ void instance_uldaman::Update(uint32 uiDiff)
         {
             // Get Keeper which is alive and out of combat
             Creature* pKeeper = instance->GetCreature(*itr);
-            if (!pKeeper || !pKeeper->isAlive() || pKeeper->getVictim())
+            if (!pKeeper || !pKeeper->IsAlive() || pKeeper->GetVictim())
                 continue;
 
             // Get starter player for attack
             Player* pPlayer = pKeeper->GetMap()->GetPlayer(m_playerGuid);
-            if (!pPlayer || !pPlayer->isAlive())
+            if (!pPlayer || !pPlayer->IsAlive())
             {
                 // If he's not available, then get a random player, within a reasonamble distance in map
                 pPlayer = GetPlayerInMap(true, false);
@@ -316,9 +316,7 @@ bool ProcessEventId_event_spell_altar_boss_aggro(uint32 uiEventId, Object* pSour
 
 void AddSC_instance_uldaman()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_uldaman";
     pNewScript->GetInstanceData = &GetInstanceData_instance_uldaman;
     pNewScript->RegisterSelf();

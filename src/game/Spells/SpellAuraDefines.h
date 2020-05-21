@@ -15,12 +15,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-/**
- * \addtogroup game
- * @{
- * \file
- */
-
 
 #ifndef MANGOS_SPELLAURADEFINES_H
 #define MANGOS_SPELLAURADEFINES_H
@@ -30,9 +24,15 @@
 
 enum AuraFlags
 {
-    AFLAG_NEGATIVE          = 0x09,
-    AFLAG_POSITIVE          = 0x1F,
-    AFLAG_MASK              = 0xFF
+    AFLAG_NONE                  = 0x00,
+    AFLAG_HELPFUL               = 0x01,
+    AFLAG_HARMFUL               = 0x02,
+    AFLAG_PASSIVE_DEPRECATED    = 0x04,     // Pre-WotLK: debuffs can't be queried using this flag. Unused in UI since 1.10.0, new meaning unknown (still the same?)
+    AFLAG_UNK4                  = 0x08,     // Pre-WotLK: unused in UI
+    AFLAG_CANCELABLE            = 0x10,
+    AFLAG_NOT_CANCELABLE        = 0x20,
+
+    AFLAG_MASK_ALL              = 0xFF
 };
 
 /**
@@ -355,11 +355,11 @@ enum AuraType
     SPELL_AURA_HASTE_RANGED = 218,
     SPELL_AURA_MOD_MANA_REGEN_FROM_STAT = 219,
     SPELL_AURA_MOD_RATING_FROM_STAT = 220,
-    SPELL_AURA_221 = 221,
+    SPELL_AURA_DETAUNT = 221,
     SPELL_AURA_222 = 222,
-    SPELL_AURA_223 = 223,
+    SPELL_AURA_RAID_PROC_FROM_CHARGE = 223,
     SPELL_AURA_224 = 224,
-    SPELL_AURA_PRAYER_OF_MENDING = 225,
+    SPELL_AURA_RAID_PROC_FROM_CHARGE_WITH_VALUE = 225,
     SPELL_AURA_PERIODIC_DUMMY = 226,
     SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE = 227,
     SPELL_AURA_DETECT_STEALTH = 228,

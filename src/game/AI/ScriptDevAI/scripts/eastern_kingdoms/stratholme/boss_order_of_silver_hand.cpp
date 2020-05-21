@@ -21,7 +21,7 @@ SDComment: Timers; Not sure if we need to respawn dead npcs on evade; May need a
 SDCategory: Stratholme
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "stratholme.h"
 
 /*#####
@@ -89,8 +89,8 @@ struct boss_silver_hand_bossesAI : public ScriptedAI
 
     void Reset() override
     {
-        for (std::unordered_map<uint8, uint32>::iterator itr = m_mSpellTimers.begin(); itr != m_mSpellTimers.end(); ++itr)
-            itr->second = m_aSilverHandAbility[itr->first].m_uiInitialTimer;
+        for (auto& m_mSpellTimer : m_mSpellTimers)
+            m_mSpellTimer.second = m_aSilverHandAbility[m_mSpellTimer.first].m_uiInitialTimer;
     }
 
     void JustDied(Unit* pKiller) override
@@ -106,7 +106,7 @@ struct boss_silver_hand_bossesAI : public ScriptedAI
                 if (pKiller->GetTypeId() == TYPEID_PLAYER)
                 {
                     if (Creature* pCredit = m_pInstance->GetSingleCreatureFromStorage(NPC_PALADIN_QUEST_CREDIT))
-                        ((Player*)pKiller)->RewardPlayerAndGroupAtEvent(pCredit->GetEntry(), pCredit);
+                        ((Player*)pKiller)->RewardPlayerAndGroupAtEventCredit(pCredit->GetEntry(), pCredit);
                 }
             }
         }
@@ -122,7 +122,7 @@ struct boss_silver_hand_bossesAI : public ScriptedAI
                 pTarget = m_creature;
                 break;
             case TARGET_TYPE_VICTIM:
-                pTarget = m_creature->getVictim();
+                pTarget = m_creature->GetVictim();
                 break;
             case TARGET_TYPE_RANDOM:
                 pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, m_aSilverHandAbility[uiIndex].m_uiSpellId, SELECT_FLAG_IN_LOS);
@@ -144,37 +144,35 @@ struct boss_silver_hand_bossesAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
-        for (std::unordered_map<uint8, uint32>::iterator itr = m_mSpellTimers.begin(); itr != m_mSpellTimers.end(); ++itr)
+        for (auto& m_mSpellTimer : m_mSpellTimers)
         {
-            if (itr->second < uiDiff)
+            if (m_mSpellTimer.second < uiDiff)
             {
-                if (CanUseSpecialAbility(itr->first))
+                if (CanUseSpecialAbility(m_mSpellTimer.first))
                 {
-                    itr->second = m_aSilverHandAbility[itr->first].m_uiCooldown;
+                    m_mSpellTimer.second = m_aSilverHandAbility[m_mSpellTimer.first].m_uiCooldown;
                     break;
                 }
             }
             else
-                itr->second -= uiDiff;
+                m_mSpellTimer.second -= uiDiff;
         }
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_boss_silver_hand_bossesAI(Creature* pCreature)
+UnitAI* GetAI_boss_silver_hand_bossesAI(Creature* pCreature)
 {
     return new boss_silver_hand_bossesAI(pCreature);
 }
 
 void AddSC_boss_order_of_silver_hand()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_silver_hand_bosses";
     pNewScript->GetAI = &GetAI_boss_silver_hand_bossesAI;
     pNewScript->RegisterSelf();

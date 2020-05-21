@@ -28,8 +28,11 @@
 #include "MotionGenerators/WaypointMovementGenerator.h"
 #include "Maps/MapPersistentStateMgr.h"
 #include "Globals/ObjectMgr.h"
+#include "World/World.h"
 
-#define MOVEMENT_PACKET_TIME_DELAY 0
+#include <boost/accumulators/statistics/variance.hpp>
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics.hpp>
 
 void WorldSession::HandleMoveWorldportAckOpcode(WorldPacket& /*recv_data*/)
 {
@@ -96,7 +99,7 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     InstanceTemplate const* mInstance = ObjectMgr::GetInstanceTemplate(loc.mapid);
 
     // reset instance validity, except if going to an instance inside an instance
-    if (GetPlayer()->m_InstanceValid == false && !mInstance)
+    if (!GetPlayer()->m_InstanceValid && !mInstance)
         GetPlayer()->m_InstanceValid = true;
 
     GetPlayer()->SetSemaphoreTeleportFar(false);
@@ -153,20 +156,10 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     GetPlayer()->SendInitialPacketsAfterAddToMap();
 
     // flight fast teleport case
-    if (GetPlayer()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FLIGHT_MOTION_TYPE)
-    {
-        if (!_player->InBattleGround())
-        {
-            // short preparations to continue flight
-            FlightPathMovementGenerator* flight = (FlightPathMovementGenerator*)(GetPlayer()->GetMotionMaster()->top());
-            flight->Reset(*GetPlayer());
-            return;
-        }
-
-        // battleground state prepare, stop flight
-        GetPlayer()->GetMotionMaster()->MovementExpired();
-        GetPlayer()->m_taxi.ClearTaxiDestinations();
-    }
+    if (_player->InBattleGround())
+        _player->TaxiFlightInterrupt();
+    else
+        _player->TaxiFlightResume();
 
     if (mEntry->IsRaid() && mInstance)
     {
@@ -224,6 +217,7 @@ void WorldSession::HandleMoveTeleportAckOpcode(WorldPacket& recv_data)
 
     WorldLocation const& dest = plMover->GetTeleportDest();
 
+    plMover->SetDelayedZoneUpdate(false, 0);
     plMover->SetPosition(dest.coord_x, dest.coord_y, dest.coord_z, dest.orientation, true);
 
     uint32 newzone, newarea;
@@ -371,7 +365,6 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket& recv_data)
     {
         sLog.outError("HandleSetActiveMoverOpcode: incorrect mover guid: mover is %s and should be %s",
                       _player->GetMover()->GetGuidStr().c_str(), guid.GetString().c_str());
-        return;
     }
 }
 
@@ -386,7 +379,7 @@ void WorldSession::HandleMoveNotActiveMoverOpcode(WorldPacket& recv_data)
     recv_data >> old_mover_guid;
     recv_data >> mi;
 
-    if (_player->GetMover() && _player->GetMover()->GetObjectGuid() == old_mover_guid)
+    if (_player->IsClientControlled() && _player->GetMover() && _player->GetMover()->GetObjectGuid() == old_mover_guid)
     {
         sLog.outError("HandleMoveNotActiveMover: incorrect mover guid: mover is %s and should be %s instead of %s",
                       _player->GetMover()->GetGuidStr().c_str(),
@@ -396,7 +389,8 @@ void WorldSession::HandleMoveNotActiveMoverOpcode(WorldPacket& recv_data)
         return;
     }
 
-    _player->m_movementInfo = mi;
+    if (!_player->IsTaxiFlying())
+        _player->m_movementInfo = mi;
 }
 
 void WorldSession::HandleMountSpecialAnimOpcode(WorldPacket& /*recvdata*/)
@@ -434,6 +428,9 @@ void WorldSession::HandleMoveKnockBackAck(WorldPacket& recv_data)
         return;
 
     HandleMoverRelocation(movementInfo);
+
+    if (plMover->IsFreeFlying())
+        plMover->SetCanFly(true);
 
     WorldPacket data(MSG_MOVE_KNOCK_BACK, recv_data.size() + 15);
     data << mover->GetObjectGuid();
@@ -486,7 +483,7 @@ void WorldSession::HandleMoveWaterWalkAck(WorldPacket& recv_data)
 
 void WorldSession::HandleSummonResponseOpcode(WorldPacket& recv_data)
 {
-    if (!_player->isAlive() || _player->isInCombat())
+    if (!_player->IsAlive() || _player->IsInCombat())
         return;
 
     ObjectGuid summonerGuid;
@@ -530,9 +527,7 @@ bool WorldSession::VerifyMovementInfo(MovementInfo const& movementInfo) const
 
 void WorldSession::HandleMoverRelocation(MovementInfo& movementInfo)
 {
-    if (m_clientTimeDelay == 0)
-        m_clientTimeDelay = WorldTimer::getMSTime() - movementInfo.GetTime();
-    movementInfo.UpdateTime(movementInfo.GetTime() + m_clientTimeDelay + MOVEMENT_PACKET_TIME_DELAY);
+    SynchronizeMovement(movementInfo);
 
     Unit* mover = _player->GetMover();
 
@@ -561,32 +556,22 @@ void WorldSession::HandleMoverRelocation(MovementInfo& movementInfo)
             movementInfo.ClearTransportData();
         }
 
-        if (movementInfo.HasMovementFlag(MOVEFLAG_SWIMMING) != plMover->IsInWater())
-        {
-            // now client not include swimming flag in case jumping under water
-            plMover->SetInWater(!plMover->IsInWater() || plMover->GetTerrain()->IsUnderWater(movementInfo.GetPos()->x, movementInfo.GetPos()->y, movementInfo.GetPos()->z));
-        }
-
-        plMover->SetPosition(movementInfo.GetPos()->x, movementInfo.GetPos()->y, movementInfo.GetPos()->z, movementInfo.GetPos()->o);
         plMover->m_movementInfo = movementInfo;
+        plMover->SetPosition(movementInfo.GetPos()->x, movementInfo.GetPos()->y, movementInfo.GetPos()->z, movementInfo.GetPos()->o);
 
         if (movementInfo.GetPos()->z < -500.0f)
         {
-            if (plMover->GetBattleGround()
-                    && plMover->GetBattleGround()->HandlePlayerUnderMap(_player))
-            {
-                // do nothing, the handle already did if returned true
-            }
-            else
+            // make sure the background didnt already handle this
+            if (!(plMover->GetBattleGround() && plMover->GetBattleGround()->HandlePlayerUnderMap(_player)))
             {
                 // NOTE: this is actually called many times while falling
                 // even after the player has been teleported away
                 // TODO: discard movement packets after the player is rooted
-                if (plMover->isAlive())
+                if (plMover->IsAlive())
                 {
                     plMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plMover->GetMaxHealth());
                     // pl can be alive if GM/etc
-                    if (!plMover->isAlive())
+                    if (!plMover->IsAlive())
                     {
                         // change the death state to CORPSE to prevent the death timer from
                         // starting in the next player update
@@ -604,5 +589,103 @@ void WorldSession::HandleMoverRelocation(MovementInfo& movementInfo)
     {
         if (mover->IsInWorld())
             mover->GetMap()->CreatureRelocation((Creature*)mover, movementInfo.GetPos()->x, movementInfo.GetPos()->y, movementInfo.GetPos()->z, movementInfo.GetPos()->o);
+    }
+}
+
+void WorldSession::HandleMoveTimeSkippedOpcode(WorldPacket& recv_data)
+{
+    /*  WorldSession::Update( WorldTimer::getMSTime() );*/
+    DEBUG_LOG("WORLD: Received opcode CMSG_MOVE_TIME_SKIPPED");
+
+    ObjectGuid guid;
+    uint32 timeSkipped;
+    recv_data >> guid;
+    recv_data >> timeSkipped;
+
+    Unit* mover = _player->GetMover();
+
+    // Ignore updates not for current player
+    if (mover == nullptr || guid != mover->GetObjectGuid())
+        return;
+
+    mover->m_movementInfo.UpdateTime(mover->m_movementInfo.GetTime() + timeSkipped);
+
+    // Send to other players
+    WorldPacket data(MSG_MOVE_TIME_SKIPPED, 16);
+    data << mover->GetPackGUID();
+    data << timeSkipped;
+    mover->SendMessageToSetExcept(data, _player);
+}
+
+void WorldSession::HandleTimeSyncResp(WorldPacket& recvData)
+{
+    DEBUG_LOG("CMSG_TIME_SYNC_RESP");
+
+    uint32 counter, clientTimestamp;
+    recvData >> counter >> clientTimestamp;
+
+    if (m_pendingTimeSyncRequests.count(counter) == 0)
+        return;
+
+    uint32 serverTimeAtSent = m_pendingTimeSyncRequests.at(counter);
+    m_pendingTimeSyncRequests.erase(counter);
+
+    // time it took for the request to travel to the client, for the client to process it and reply and for response to travel back to the server.
+    // we are going to make 2 assumptions:
+    // 1) we assume that the request processing time equals 0.
+    // 2) we assume that the packet took as much time to travel from server to client than it took to travel from client to server.
+    uint32 roundTripDuration = WorldTimer::getMSTimeDiff(serverTimeAtSent, recvData.GetReceivedTime());
+    uint32 lagDelay = roundTripDuration / 2;
+
+    /*
+    clockDelta = serverTime - clientTime
+    where
+    serverTime: time that was displayed on the clock of the SERVER at the moment when the client processed the SMSG_TIME_SYNC_REQUEST packet.
+    clientTime:  time that was displayed on the clock of the CLIENT at the moment when the client processed the SMSG_TIME_SYNC_REQUEST packet.
+    Once clockDelta has been computed, we can compute the time of an event on server clock when we know the time of that same event on the client clock,
+    using the following relation:
+    serverTime = clockDelta + clientTime
+    */
+    int64 clockDelta = (int64)(serverTimeAtSent + lagDelay) - (int64)clientTimestamp;
+    m_timeSyncClockDeltaQueue.push_back(std::pair<int64, uint32>(clockDelta, roundTripDuration));
+    ComputeNewClockDelta();
+}
+
+void WorldSession::ComputeNewClockDelta()
+{
+    // implementation of the technique described here: https://web.archive.org/web/20180430214420/http://www.mine-control.com/zack/timesync/timesync.html
+    // to reduce the skew induced by dropped TCP packets that get resent.
+
+    using namespace boost::accumulators;
+
+    accumulator_set<uint32, features<tag::mean, tag::median, tag::variance(lazy)> > latencyAccumulator;
+
+    for (auto pair : m_timeSyncClockDeltaQueue)
+        latencyAccumulator(pair.second);
+
+    uint32 latencyMedian = static_cast<uint32>(std::round(median(latencyAccumulator)));
+    uint32 latencyStandardDeviation = static_cast<uint32>(std::round(sqrt(variance(latencyAccumulator))));
+
+    accumulator_set<int64, features<tag::mean> > clockDeltasAfterFiltering;
+    uint32 sampleSizeAfterFiltering = 0;
+    for (auto pair : m_timeSyncClockDeltaQueue)
+    {
+        if (pair.second < latencyStandardDeviation + latencyMedian)
+        {
+            clockDeltasAfterFiltering(pair.first);
+            sampleSizeAfterFiltering++;
+        }
+    }
+
+    if (sampleSizeAfterFiltering != 0)
+    {
+        int64 meanClockDelta = static_cast<int64>(std::round(mean(clockDeltasAfterFiltering)));
+        if (std::abs(meanClockDelta - m_timeSyncClockDelta) > 25)
+            m_timeSyncClockDelta = meanClockDelta;
+    }
+    else if (m_timeSyncClockDelta == 0)
+    {
+        std::pair<int64, uint32> back = m_timeSyncClockDeltaQueue.back();
+        m_timeSyncClockDelta = back.first;
     }
 }

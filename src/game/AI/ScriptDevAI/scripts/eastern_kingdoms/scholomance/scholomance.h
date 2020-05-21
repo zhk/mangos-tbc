@@ -124,7 +124,7 @@ struct BoxVolume
     uint32 m_uiWidth;
 };
 
-static const BoxVolume aEntranceRoom[] = {174.13f, 63.84f, 104.0f, 54, 44};
+static const BoxVolume aEntranceRoom = { 174.13f, 63.84f, 104.0f, 54, 44 };
 
 static const uint32 aGandlingEvents[MAX_EVENTS] = {EVENT_ID_POLKELT, EVENT_ID_THEOLEN, EVENT_ID_MALICIA, EVENT_ID_ILLUCIA, EVENT_ID_BAROV, EVENT_ID_RAVENIAN};
 
@@ -152,7 +152,7 @@ class instance_scholomance : public ScriptedInstance
         void SetData(uint32 uiType, uint32 uiData) override;
         uint32 GetData(uint32 uiType) const override;
 
-        void Update(uint32 uiDiff) override;
+        void Update(const uint32 diff) override;
 
         const char* Save() const override { return m_strInstData.c_str(); }
         void Load(const char* chrIn) override;

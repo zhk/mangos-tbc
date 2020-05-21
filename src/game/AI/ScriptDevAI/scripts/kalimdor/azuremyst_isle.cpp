@@ -26,7 +26,7 @@ npc_draenei_survivor
 npc_magwin
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -75,7 +75,6 @@ struct npc_draenei_survivorAI : public ScriptedAI
         m_creature->CastSpell(m_creature, SPELL_IRRIDATION, TRIGGERED_OLD_TRIGGERED);
 
         m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP);
-        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IN_COMBAT);
         m_creature->SetHealth(int(m_creature->GetMaxHealth()*.1));
         m_creature->SetStandState(UNIT_STAND_STATE_SLEEP);
     }
@@ -171,7 +170,7 @@ struct npc_draenei_survivorAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_draenei_survivor(Creature* pCreature)
+UnitAI* GetAI_npc_draenei_survivor(Creature* pCreature)
 {
     return new npc_draenei_survivorAI(pCreature);
 }
@@ -205,7 +204,7 @@ struct npc_magwinAI : public npc_escortAI
             m_creature->SetStandState(UNIT_STAND_STATE_KNEEL);
     }
 
-    void Aggro(Unit* pWho) override
+    void Aggro(Unit* /*pWho*/) override
     {
         if (urand(0, 1))
             DoScriptText(SAY_AGGRO, m_creature);
@@ -226,7 +225,7 @@ struct npc_magwinAI : public npc_escortAI
                 SetRun();
                 DoScriptText(SAY_END1, m_creature);
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_A_CRY_FOR_HELP, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_A_CRY_FOR_HELP, m_creature);
                 if (Creature* pFather = GetClosestCreatureWithEntry(m_creature, NPC_COWLEN, 30.0f))
                 {
                     pFather->SetStandState(UNIT_STAND_STATE_STAND);
@@ -257,11 +256,11 @@ struct npc_magwinAI : public npc_escortAI
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
-            m_creature->SetFactionTemporary(FACTION_ESCORT_A_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            m_creature->SetFactionTemporary(FACTION_ESCORT_A_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
             Start(false, (Player*)pInvoker, GetQuestTemplateStore(uiMiscValue));
         }
     }
@@ -275,16 +274,14 @@ bool QuestAccept_npc_magwin(Player* pPlayer, Creature* pCreature, const Quest* p
     return true;
 }
 
-CreatureAI* GetAI_npc_magwinAI(Creature* pCreature)
+UnitAI* GetAI_npc_magwinAI(Creature* pCreature)
 {
     return new npc_magwinAI(pCreature);
 }
 
 void AddSC_azuremyst_isle()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_draenei_survivor";
     pNewScript->GetAI = &GetAI_npc_draenei_survivor;
     pNewScript->RegisterSelf();

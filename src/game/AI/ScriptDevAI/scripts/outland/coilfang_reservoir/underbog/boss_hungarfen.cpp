@@ -21,7 +21,7 @@ SDComment: Need confirmation if spell data are same in both modes; The Underbog 
 SDCategory: Coilfang Resevoir, Underbog
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -69,7 +69,7 @@ struct boss_hungarfenAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_creature->GetHealthPercent() <= 20.0f && !m_bHasSpores)
@@ -81,7 +81,7 @@ struct boss_hungarfenAI : public ScriptedAI
         if (m_uiMushroomTimer < uiDiff)
         {
             // Summon a mushroom exactly on target position
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
                 m_creature->SummonCreature(NPC_UNDERBOG_MUSHROOM, pTarget->GetPositionX(), pTarget->GetPositionY(), pTarget->GetPositionZ(), 0, TEMPSPAWN_CORPSE_DESPAWN, 0);
 
             m_uiMushroomTimer = m_bIsRegularMode ? 10000 : 5000;
@@ -89,22 +89,25 @@ struct boss_hungarfenAI : public ScriptedAI
         else
             m_uiMushroomTimer -= uiDiff;
 
-        if (m_uiAcidGeyserTimer < uiDiff)
+        if (!m_bIsRegularMode)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (m_uiAcidGeyserTimer < uiDiff)
             {
-                if (DoCastSpellIfCan(pTarget, SPELL_ACID_GEYSER) == CAST_OK)
-                    m_uiAcidGeyserTimer = urand(10000, 17500);
+                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
+                {
+                    if (DoCastSpellIfCan(pTarget, SPELL_ACID_GEYSER) == CAST_OK)
+                        m_uiAcidGeyserTimer = urand(10000, 17500);
+                }
             }
+            else
+                m_uiAcidGeyserTimer -= uiDiff;
         }
-        else
-            m_uiAcidGeyserTimer -= uiDiff;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_boss_hungarfen(Creature* pCreature)
+UnitAI* GetAI_boss_hungarfen(Creature* pCreature)
 {
     return new boss_hungarfenAI(pCreature);
 }
@@ -126,8 +129,10 @@ struct mob_underbog_mushroomAI : public ScriptedAI
         DoCastSpellIfCan(m_creature, SPELL_PUTRID_MUSHROOM);
     }
 
-    void MoveInLineOfSight(Unit* /*pWho*/) override { return; }
-    void AttackStart(Unit* /*pWho*/) override { return; }
+    void MoveInLineOfSight(Unit* /*pWho*/) override {
+    }
+    void AttackStart(Unit* /*pWho*/) override {
+    }
 
     void UpdateAI(const uint32 uiDiff) override
     {
@@ -169,16 +174,14 @@ struct mob_underbog_mushroomAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_mob_underbog_mushroom(Creature* pCreature)
+UnitAI* GetAI_mob_underbog_mushroom(Creature* pCreature)
 {
     return new mob_underbog_mushroomAI(pCreature);
 }
 
 void AddSC_boss_hungarfen()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_hungarfen";
     pNewScript->GetAI = &GetAI_boss_hungarfen;
     pNewScript->RegisterSelf();

@@ -26,7 +26,7 @@ mob_omrogg_heads
 boss_warbringer_omrogg
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "shattered_halls.h"
 
 enum
@@ -41,6 +41,8 @@ enum
 
     SPELL_BURNING_MAUL          = 30598,
     SPELL_BURNING_MAUL_H        = 36056,
+
+    SPELL_BEATDOWN              = 30618, // Unused - used for threat reset
 
     NPC_LEFT_HEAD               = 19523,
     NPC_RIGHT_HEAD              = 19524
@@ -333,7 +335,7 @@ struct boss_warbringer_omroggAI : public ScriptedAI
         else
             m_uiDelayTimer -= uiDiff;
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiBlastCount && m_uiBlastWaveTimer)
@@ -368,7 +370,7 @@ struct boss_warbringer_omroggAI : public ScriptedAI
 
         if (m_uiResetThreatTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 DoYellForThreat();
                 DoResetThreat();
@@ -399,21 +401,19 @@ struct boss_warbringer_omroggAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_warbringer_omrogg(Creature* pCreature)
+UnitAI* GetAI_boss_warbringer_omrogg(Creature* pCreature)
 {
     return new boss_warbringer_omroggAI(pCreature);
 }
 
-CreatureAI* GetAI_mob_omrogg_heads(Creature* pCreature)
+UnitAI* GetAI_mob_omrogg_heads(Creature* pCreature)
 {
     return new mob_omrogg_headsAI(pCreature);
 }
 
 void AddSC_boss_warbringer_omrogg()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_warbringer_omrogg";
     pNewScript->GetAI = &GetAI_boss_warbringer_omrogg;
     pNewScript->RegisterSelf();

@@ -27,7 +27,7 @@ item_flying_machine(i34060,i34061)  Engineering crafted flying machines
 item_gor_dreks_ointment(i30175)     Protecting Our Own(q10488)
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "Spells/Spell.h"
 
 
@@ -41,7 +41,7 @@ enum
     NPC_EMBERSTRIFE         = 10321
 };
 
-bool ItemUse_item_orb_of_draconic_energy(Player* pPlayer, Item* pItem, const SpellCastTargets& pTargets)
+bool ItemUse_item_orb_of_draconic_energy(Player* pPlayer, Item* pItem, const SpellCastTargets& /*pTargets*/)
 {
     Creature* pEmberstrife = GetClosestCreatureWithEntry(pPlayer, NPC_EMBERSTRIFE, 20.0f);
     if (!pEmberstrife)
@@ -50,7 +50,7 @@ bool ItemUse_item_orb_of_draconic_energy(Player* pPlayer, Item* pItem, const Spe
     // If Emberstrife already mind controled or above 10% HP: force spell cast failure
     if (pEmberstrife->HasAura(SPELL_DOMINION_SOUL) || pEmberstrife->GetHealthPercent() > 10.0f)
     {
-        pPlayer->SendEquipError(EQUIP_ERR_NONE, pItem, NULL);
+        pPlayer->SendEquipError(EQUIP_ERR_NONE, pItem, nullptr);
 
         if (const SpellEntry* pSpellInfo = GetSpellStore()->LookupEntry<SpellEntry>(SPELL_DOMINION_SOUL))
             Spell::SendCastResult(pPlayer, pSpellInfo, 1, SPELL_FAILED_TARGET_AURASTATE);
@@ -92,11 +92,11 @@ bool ItemUse_item_flying_machine(Player* pPlayer, Item* pItem, const SpellCastTa
     uint32 itemId = pItem->GetEntry();
 
     if (itemId == 34060)
-        if (pPlayer->GetBaseSkillValue(SKILL_RIDING) >= 225)
+        if (pPlayer->GetSkillValueBase(SKILL_RIDING) >= 225)
             return false;
 
     if (itemId == 34061)
-        if (pPlayer->GetBaseSkillValue(SKILL_RIDING) == 300)
+        if (pPlayer->GetSkillValueBase(SKILL_RIDING) == 300)
             return false;
 
     debug_log("SD2: Player attempt to use item %u, but did not meet riding requirement", itemId);
@@ -131,9 +131,7 @@ bool ItemUse_item_gor_dreks_ointment(Player* pPlayer, Item* pItem, const SpellCa
 
 void AddSC_item_scripts()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "item_orb_of_draconic_energy";
     pNewScript->pItemUse = &ItemUse_item_orb_of_draconic_energy;
     pNewScript->RegisterSelf();

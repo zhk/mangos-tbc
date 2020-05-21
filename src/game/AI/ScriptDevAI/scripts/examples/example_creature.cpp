@@ -21,7 +21,7 @@ SDComment: Short custom scripting example
 SDCategory: Script Examples
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 // **** This script is designed as an example for others to build on ****
 // **** Please modify whatever you'd like to as this script is only for developement ****
@@ -130,7 +130,7 @@ struct example_creatureAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Out of combat timers
-        if (!m_creature->getVictim())
+        if (!m_creature->GetVictim())
         {
             // Random Say timer
             if (m_uiSayTimer < uiDiff)
@@ -162,7 +162,7 @@ struct example_creatureAI : public ScriptedAI
         }
 
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Abilities of all phases
@@ -171,9 +171,9 @@ struct example_creatureAI : public ScriptedAI
         {
             // Cast spell one on our current target.
             if (rand() % 50 > 10)
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_ONE_ALT);
-            else if (m_creature->IsWithinDist(m_creature->getVictim(), 25.0f))
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_ONE);
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_ONE_ALT);
+            else if (m_creature->IsWithinDist(m_creature->GetVictim(), 25.0f))
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_ONE);
 
             m_uiSpellOneTimer = 5000;
         }
@@ -226,10 +226,10 @@ struct example_creatureAI : public ScriptedAI
             if (m_uiBeserkTimer < uiDiff)
             {
                 // Cast uber death spell if possible
-                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_BESERK) == CAST_OK)
+                if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_BESERK) == CAST_OK)
                 {
                     // Say our line if we cast
-                    DoScriptText(SAY_BESERK, m_creature, m_creature->getVictim());
+                    DoScriptText(SAY_BESERK, m_creature, m_creature->GetVictim());
 
                     // Cast our beserk spell agian in 12 seconds (if we didn't kill everyone)
                     m_uiBeserkTimer = 12000;
@@ -246,7 +246,7 @@ struct example_creatureAI : public ScriptedAI
 
 // This is the GetAI method used by all scripts that involve AI
 // It is called every time a new creature using this script is created
-CreatureAI* GetAI_example_creature(Creature* pCreature)
+UnitAI* GetAI_example_creature(Creature* pCreature)
 {
     return new example_creatureAI(pCreature);
 }
@@ -280,9 +280,7 @@ bool GossipSelect_example_creature(Player* pPlayer, Creature* pCreature, uint32 
 // It must define all handled functions that are to be run in this script
 void AddSC_example_creature()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "example_creature";
     pNewScript->GetAI = &GetAI_example_creature;
     pNewScript->pGossipHello = &GossipHello_example_creature;

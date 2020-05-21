@@ -24,7 +24,7 @@ EndScriptData */
 /* ContentData
 npc_corporal_keeshan */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -58,7 +58,7 @@ struct npc_corporal_keeshan_escortAI : public npc_escortAI
         m_uiShieldBashTimer  = 8000;
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
@@ -90,10 +90,13 @@ struct npc_corporal_keeshan_escortAI : public npc_escortAI
                 m_creature->SetStandState(UNIT_STAND_STATE_SIT);
                 DoScriptText(SAY_CORPORAL_KEESHAN_2, m_creature);
                 break;
+            case 37:
+                SetRun(true);                               // run now until the destination
+                break;
             case 53:                                        // quest_complete
                 DoScriptText(SAY_CORPORAL_KEESHAN_4, m_creature);
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_MISSING_IN_ACTION, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_MISSING_IN_ACTION, m_creature);
                 break;
         }
     }
@@ -101,12 +104,12 @@ struct npc_corporal_keeshan_escortAI : public npc_escortAI
     void UpdateEscortAI(const uint32 uiDiff) override
     {
         // Combat check
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiMockingBlowTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_MOCKING_BLOW);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_MOCKING_BLOW);
             m_uiMockingBlowTimer = 5000;
         }
         else
@@ -114,7 +117,7 @@ struct npc_corporal_keeshan_escortAI : public npc_escortAI
 
         if (m_uiShieldBashTimer < uiDiff)
         {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHIELD_BASH);
+            DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SHIELD_BASH);
             m_uiShieldBashTimer = 8000;
         }
         else
@@ -124,7 +127,7 @@ struct npc_corporal_keeshan_escortAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_corporal_keeshan(Creature* pCreature)
+UnitAI* GetAI_npc_corporal_keeshan(Creature* pCreature)
 {
     return new npc_corporal_keeshan_escortAI(pCreature);
 }
@@ -139,9 +142,7 @@ bool QuestAccept_npc_corporal_keeshan(Player* pPlayer, Creature* pCreature, cons
 
 void AddSC_redridge_mountains()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_corporal_keeshan";
     pNewScript->GetAI = &GetAI_npc_corporal_keeshan;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_corporal_keeshan;

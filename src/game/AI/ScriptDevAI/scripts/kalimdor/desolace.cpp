@@ -27,7 +27,7 @@ npc_dalinda_malem
 npc_melizza_brimbuzzle
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -101,7 +101,7 @@ struct npc_aged_dying_ancient_kodoAI : public ScriptedAI
         // timer should always be == 0 unless we already updated entry of creature. Then not expect this updated to ever be in combat.
         if (m_uiDespawnTimer && m_uiDespawnTimer <= diff)
         {
-            if (!m_creature->getVictim() && m_creature->isAlive())
+            if (!m_creature->GetVictim() && m_creature->IsAlive())
             {
                 Reset();
                 m_creature->SetDeathState(JUST_DIED);
@@ -111,14 +111,14 @@ struct npc_aged_dying_ancient_kodoAI : public ScriptedAI
         }
         else m_uiDespawnTimer -= diff;
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_npc_aged_dying_ancient_kodo(Creature* pCreature)
+UnitAI* GetAI_npc_aged_dying_ancient_kodo(Creature* pCreature)
 {
     return new npc_aged_dying_ancient_kodoAI(pCreature);
 }
@@ -193,12 +193,12 @@ struct npc_dalinda_malemAI : public npc_escortAI
         if (uiPointId == 18)
         {
             if (Player* pPlayer = GetPlayerForEscort())
-                pPlayer->GroupEventHappens(QUEST_RETURN_TO_VAHLARRIEL, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_RETURN_TO_VAHLARRIEL, m_creature);
         }
     }
 };
 
-CreatureAI* GetAI_npc_dalinda_malem(Creature* pCreature)
+UnitAI* GetAI_npc_dalinda_malem(Creature* pCreature)
 {
     return new npc_dalinda_malemAI(pCreature);
 }
@@ -306,13 +306,13 @@ struct npc_melizza_brimbuzzleAI : public npc_escortAI, private DialogueHelper
                 m_creature->SetFactionTemporary(FACTION_ESCORT_N_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
                 break;
             case 4:
-                for (uint8 i = 0; i < MAX_MARAUDERS; ++i)
+                for (auto i : aMarauderSpawn)
                 {
                     for (uint8 j = 0; j < MAX_MARAUDERS; ++j)
                     {
                         // Summon 2 Marauders on each point
                         float fX, fY, fZ;
-                        m_creature->GetRandomPoint(aMarauderSpawn[i].m_fX, aMarauderSpawn[i].m_fY, aMarauderSpawn[i].m_fZ, 7.0f, fX, fY, fZ);
+                        m_creature->GetRandomPoint(i.m_fX, i.m_fY, i.m_fZ, 7.0f, fX, fY, fZ);
                         m_creature->SummonCreature(NPC_MARAUDINE_MARAUDER, fX, fY, fZ, 0.0f, TEMPSPAWN_DEAD_DESPAWN, 0);
                     }
                 }
@@ -348,7 +348,7 @@ struct npc_melizza_brimbuzzleAI : public npc_escortAI, private DialogueHelper
                 if (Player* pPlayer = GetPlayerForEscort())
                 {
                     DoScriptText(SAY_MELIZZA_FINISH, m_creature, pPlayer);
-                    pPlayer->GroupEventHappens(QUEST_GET_ME_OUT_OF_HERE, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_GET_ME_OUT_OF_HERE, m_creature);
                 }
 
                 m_creature->ClearTemporaryFaction();
@@ -369,14 +369,14 @@ struct npc_melizza_brimbuzzleAI : public npc_escortAI, private DialogueHelper
     {
         DialogueUpdate(uiDiff);
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_npc_melizza_brimbuzzle(Creature* pCreature)
+UnitAI* GetAI_npc_melizza_brimbuzzle(Creature* pCreature)
 {
     return new npc_melizza_brimbuzzleAI(pCreature);
 }
@@ -468,7 +468,7 @@ struct npc_cork_gizeltonAI : public ScriptedAI
         uiQuestStatus = 0;
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
             m_playerGuid = pInvoker->GetObjectGuid();
@@ -499,13 +499,11 @@ struct npc_cork_gizeltonAI : public ScriptedAI
                 }
                 break;
         }
-
-        return;
     }
 
     void MovementInform(uint32 uiType, uint32 uiPointId) override
     {
-        if (uiType != WAYPOINT_MOTION_TYPE)
+        if (m_playerGuid.IsEmpty() || uiType != WAYPOINT_MOTION_TYPE)
             return;
 
         // No player assigned as quest taker: abort to avoid summoning adds
@@ -538,7 +536,7 @@ struct npc_cork_gizeltonAI : public ScriptedAI
                     DoScriptText(SAY_CORK_END, m_creature);
                     // Award quest credit
                     if (pPlayer)
-                        pPlayer->GroupEventHappens(QUEST_BODYGUARD_TO_HIRE, m_creature);
+                        pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_BODYGUARD_TO_HIRE, m_creature);
                     // Remove player to avoid adds being spawned again next turn
                     m_playerGuid.Clear();
                     uiQuestStatus = 0;
@@ -575,7 +573,7 @@ struct npc_cork_gizeltonAI : public ScriptedAI
                         DoScriptText(SAY_RIGGER_END, pRigger);
                     // Award quest credit
                     if (pPlayer)
-                        pPlayer->GroupEventHappens(QUEST_GIZELTON_CARAVAN, m_creature);
+                        pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_GIZELTON_CARAVAN, m_creature);
                     // Remove player to avoid adds being spawned again next turn
                     m_playerGuid.Clear();
                     uiQuestStatus = 0;
@@ -622,7 +620,7 @@ struct npc_cork_gizeltonAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_cork_gizelton(Creature* pCreature)
+UnitAI* GetAI_npc_cork_gizelton(Creature* pCreature)
 {
     return new npc_cork_gizeltonAI(pCreature);
 }
@@ -631,14 +629,14 @@ bool QuestAccept_npc_cork_gizelton(Player* pPlayer, Creature* pCreature, const Q
 {
     if (pQuest->GetQuestId() == QUEST_BODYGUARD_TO_HIRE)
     {
+        // Faction for the other NPCs is set in dbscripts_on_quest_start
         if (pPlayer->GetTeam() == ALLIANCE)
-            pCreature->SetFactionTemporary(FACTION_ESCORT_A_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            pCreature->SetFactionTemporary(FACTION_ESCORT_A_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
         if (pPlayer->GetTeam() == HORDE)
-            pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
-        if (npc_cork_gizeltonAI* pCork = dynamic_cast<npc_cork_gizeltonAI*>(pCreature->AI()))
-            pCreature->AI()->SendAIEvent(AI_EVENT_START_ESCORT, pPlayer, pCreature, pQuest->GetQuestId());
+        pCreature->AI()->SendAIEvent(AI_EVENT_START_ESCORT, pPlayer, pCreature, pQuest->GetQuestId());
     }
     return true;
 }
@@ -654,7 +652,7 @@ struct npc_rigger_gizeltonAI : public ScriptedAI
     void Reset() override {}
 };
 
-CreatureAI* GetAI_npc_rigger_gizelton(Creature* pCreature)
+UnitAI* GetAI_npc_rigger_gizelton(Creature* pCreature)
 {
     return new npc_rigger_gizeltonAI(pCreature);
 }
@@ -663,11 +661,12 @@ bool QuestAccept_npc_rigger_gizelton(Player* pPlayer, Creature* pCreature, const
 {
     if (pQuest->GetQuestId() == QUEST_GIZELTON_CARAVAN)
     {
+        // Faction for the other NPCs is set in dbscripts_on_quest_start
         if (pPlayer->GetTeam() == ALLIANCE)
-            pCreature->SetFactionTemporary(FACTION_ESCORT_A_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            pCreature->SetFactionTemporary(FACTION_ESCORT_A_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
         if (pPlayer->GetTeam() == HORDE)
-            pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+            pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
         // Now the quest is accepted, tell NPC Cork what player took it so it can handle quest credit/failure
         // because NPC Cork will handle both escort quests
@@ -684,6 +683,7 @@ enum
     SPELL_GHOST_SPAWN_IN   = 17321,
     SPELL_BLUE_AURA        = 17327,
     SPELL_GREEN_AURA       = 18951,
+    SPELL_CHILLING_TOUCH   = 18146,
 
     FACTION_HOSTILE        = 16,
 
@@ -704,8 +704,9 @@ struct npc_magrami_spectre : public ScriptedAI
 
     void JustRespawned() override
     {
-        m_creature->CastSpell(m_creature, SPELL_GHOST_SPAWN_IN, TRIGGERED_NONE);
-        m_creature->CastSpell(m_creature, SPELL_BLUE_AURA, TRIGGERED_NONE);
+        m_creature->CastSpell(nullptr, SPELL_GHOST_SPAWN_IN, TRIGGERED_NONE);
+        m_creature->CastSpell(nullptr, SPELL_BLUE_AURA, TRIGGERED_NONE);
+        m_creature->CastSpell(nullptr, SPELL_CHILLING_TOUCH, TRIGGERED_NONE);
 
         switch (urand(0, 1))
         {
@@ -736,7 +737,7 @@ struct npc_magrami_spectre : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiCurseTimer)
@@ -744,7 +745,7 @@ struct npc_magrami_spectre : public ScriptedAI
             if (m_uiCurseTimer <= uiDiff)
             {
                 m_uiCurseTimer = 0;
-                DoCastSpellIfCan(m_creature->getVictim(), SPELL_CURSE_OF_MAGRAMI);
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CURSE_OF_MAGRAMI);
             }
             else
                 m_uiCurseTimer -= uiDiff;
@@ -754,16 +755,14 @@ struct npc_magrami_spectre : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_magrami_spectre(Creature* pCreature)
+UnitAI* GetAI_npc_magrami_spectre(Creature* pCreature)
 {
     return new npc_magrami_spectre(pCreature);
 }
 
 void AddSC_desolace()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_aged_dying_ancient_kodo";
     pNewScript->GetAI = &GetAI_npc_aged_dying_ancient_kodo;
     pNewScript->pEffectDummyNPC = &EffectDummyCreature_npc_aged_dying_ancient_kodo;

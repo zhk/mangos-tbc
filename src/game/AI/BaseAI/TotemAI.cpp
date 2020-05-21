@@ -43,66 +43,36 @@ void TotemAI::MoveInLineOfSight(Unit* /*who*/)
 
 void TotemAI::EnterEvadeMode()
 {
-    m_creature->CombatStop(true);
+    m_creature->CombatStopWithPets(true);
 
     // Handle Evade events
-    for (CreatureEventAIList::iterator i = m_CreatureEventAIList.begin(); i != m_CreatureEventAIList.end(); ++i)
+    IncreaseDepthIfNecessary();
+    for (auto& i : m_CreatureEventAIList)
     {
-        if (i->Event.event_type == EVENT_T_EVADE)
-            ProcessEvent(*i);
+        if (i.event.event_type == EVENT_T_EVADE)
+            CheckAndReadyEventForExecution(i);
     }
+    ProcessEvents();
 }
 
 void TotemAI::UpdateAI(const uint32 diff)
 {
-    // Events are only updated once every EVENT_UPDATE_TIME ms to prevent lag with large amount of events
-    if (m_EventUpdateTime < diff)
-    {
-        m_EventDiff += diff;
-
-        // Check for time based events
-        for (CreatureEventAIList::iterator i = m_CreatureEventAIList.begin(); i != m_CreatureEventAIList.end(); ++i)
-        {
-            // Decrement Timers
-            if (i->Time)
-            {
-                // Do not decrement timers if event cannot trigger in this phase
-                if (!(i->Event.event_inverse_phase_mask & (1 << m_Phase)))
-                {
-                    if (i->Time > m_EventDiff)
-                        i->Time -= m_EventDiff;
-                    else
-                        i->Time = 0;
-                }
-            }
-
-            // Skip processing of events that have time remaining or are disabled
-            if (!(i->Enabled) || i->Time)
-                continue;
-
-            if (IsTimerBasedEvent(i->Event.event_type))
-                ProcessEvent(*i);
-        }
-
-        m_EventDiff = 0;
-        m_EventUpdateTime = EVENT_UPDATE_TIME;
-    }
-    else
-    {
-        m_EventDiff += diff;
-        m_EventUpdateTime -= diff;
-    }
+    UpdateEventTimers(diff);
 
     if (getTotem().GetTotemType() != TOTEM_ACTIVE)
         return;
 
-    if (!m_creature->isAlive() || m_creature->IsNonMeleeSpellCasted(false))
+    if (!m_creature->IsAlive() || m_creature->IsNonMeleeSpellCasted(false))
         return;
 
     // Search spell
     SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(getTotem().GetSpell());
     if (!spellInfo)
         return;
+
+	// shorthand CD check
+	if (!m_creature->IsSpellReady(*spellInfo))
+		return;
 
     // Get spell rangy
     SpellRangeEntry const* srange = sSpellRangeStore.LookupEntry(spellInfo->rangeIndex);
@@ -116,13 +86,13 @@ void TotemAI::UpdateAI(const uint32 diff)
     // Search victim if no, not attackable, or out of range, or friendly (possible in case duel end)
     if (!victim ||
             !m_creature->CanAttackOnSight(victim) || !m_creature->IsWithinDistInMap(victim, maxRange) ||
-            m_creature->CanAssist(victim) || !victim->isVisibleForOrDetect(m_creature, m_creature, false))
+            m_creature->CanAssist(victim) || !victim->IsVisibleForOrDetect(m_creature, m_creature, false))
     {
         victim = nullptr;
-        
+
         if (maxRange != 0.0f)
         {
-            MaNGOS::NearestAttackableUnitInObjectRangeCheck u_check(m_creature, maxRange);
+            MaNGOS::NearestAttackableUnitInObjectRangeCheck u_check(m_creature, m_creature->GetOwner(), maxRange);
             MaNGOS::UnitLastSearcher<MaNGOS::NearestAttackableUnitInObjectRangeCheck> checker(victim, u_check);
             Cell::VisitAllObjects(m_creature, checker, maxRange);
         }
@@ -156,4 +126,11 @@ void TotemAI::AttackStart(Unit* /*who*/)
 Totem& TotemAI::getTotem() const
 {
     return static_cast<Totem&>(*m_creature);
+}
+
+void TotemAI::SpellHit(Unit* /*unit*/, const SpellEntry* /*spellInfo*/)
+{
+    // TODO: Give grounding totem SD2
+    if (m_creature->GetEntry() == 5925 && !m_creature->HasAura(8178) && m_creature->IsAlive()) // Grounding Totem redirection aura
+        m_creature->CastSpell(nullptr, 45317, TRIGGERED_NONE); // Grounding Totem - Suicide spell - verified vs sniff
 }

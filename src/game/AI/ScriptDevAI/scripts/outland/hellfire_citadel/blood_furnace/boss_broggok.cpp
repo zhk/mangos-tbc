@@ -21,22 +21,24 @@ SDComment: pre-event not made
 SDCategory: Hellfire Citadel, Blood Furnace
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "blood_furnace.h"
 
 enum
 {
     SAY_AGGRO               = -1542008,
 
-    SPELL_SLIME_SPRAY       = 30913,
-    SPELL_SLIME_SPRAY_H     = 38458,
-    SPELL_POISON_CLOUD      = 30916,
-    SPELL_POISON_BOLT       = 30917,
-    SPELL_POISON_BOLT_H     = 38459,
+    SPELL_SUMMON_INCOMBAT_TRIGGER   = 26837,    // TODO: probably cast on spawn not sure what c.16006 does
+    SPELL_SLIME_SPRAY               = 30913,
+    SPELL_SLIME_SPRAY_H             = 38458,
+    SPELL_POISON_CLOUD              = 30916,
+    SPELL_POISON_BOLT               = 30917,
+    SPELL_POISON_BOLT_H             = 38459,
 
-    SPELL_POISON            = 30914,
+    SPELL_POISON                    = 30914,
+    SPELL_POISON_H                  = 38462,
 
-    POINT_EVENT_COMBAT      = 7,
+    POINT_EVENT_COMBAT              = 7,
 };
 
 struct boss_broggokAI : public ScriptedAI
@@ -73,7 +75,7 @@ struct boss_broggokAI : public ScriptedAI
 
     void JustSummoned(Creature* pSummoned) override
     {
-        pSummoned->CastSpell(pSummoned, SPELL_POISON, TRIGGERED_NONE, nullptr, nullptr, m_creature->GetObjectGuid());
+        pSummoned->CastSpell(pSummoned, m_bIsRegularMode ? SPELL_POISON : SPELL_POISON_H, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, m_creature->GetObjectGuid());
     }
 
     void JustDied(Unit* /*pWho*/) override
@@ -83,7 +85,7 @@ struct boss_broggokAI : public ScriptedAI
     }
 
     // Reset Orientation
-    void MovementInform(uint32 uiMotionType, uint32 uiPointId) override
+    void MovementInform(uint32 /*uiMotionType*/, uint32 uiPointId) override
     {
         if (uiPointId != POINT_EVENT_COMBAT)
             return;
@@ -94,7 +96,7 @@ struct boss_broggokAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiAcidSprayTimer < uiDiff)
@@ -134,21 +136,19 @@ struct mob_broggok_poisoncloudAI : public ScriptedAI
     void AttackStart(Unit* /*who*/) override { }
 };
 
-CreatureAI* GetAI_boss_broggok(Creature* pCreature)
+UnitAI* GetAI_boss_broggok(Creature* pCreature)
 {
     return new boss_broggokAI(pCreature);
 }
 
-CreatureAI* GetAI_mob_broggok_poisoncloud(Creature* pCreature)
+UnitAI* GetAI_mob_broggok_poisoncloud(Creature* pCreature)
 {
     return new mob_broggok_poisoncloudAI(pCreature);
 }
 
 void AddSC_boss_broggok()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_broggok";
     pNewScript->GetAI = &GetAI_boss_broggok;
     pNewScript->RegisterSelf();

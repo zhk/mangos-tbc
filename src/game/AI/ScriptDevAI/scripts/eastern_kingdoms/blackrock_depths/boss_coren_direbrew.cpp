@@ -21,7 +21,7 @@ SDComment: Some parts are not complete - requires additional research. Brewmaide
 SDCategory: Blackrock Depths
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -91,13 +91,13 @@ struct boss_coren_direbrewAI : public ScriptedAI
                 break;
         }
 
-        if (m_creature->getVictim())
-            pSummoned->AI()->AttackStart(m_creature->getVictim());
+        if (m_creature->GetVictim())
+            pSummoned->AI()->AttackStart(m_creature->GetVictim());
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Spawn Ilsa
@@ -128,7 +128,7 @@ struct boss_coren_direbrewAI : public ScriptedAI
 
         if (m_uiChargeTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_DIREBREW_CHARGE, SELECT_FLAG_NOT_IN_MELEE_RANGE))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_DIREBREW_CHARGE, SELECT_FLAG_NOT_IN_MELEE_RANGE | SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_DIREBREW_CHARGE) == CAST_OK)
                     m_uiChargeTimer = urand(5000, 10000);
@@ -151,7 +151,7 @@ struct boss_coren_direbrewAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_coren_direbrew(Creature* pCreature)
+UnitAI* GetAI_boss_coren_direbrew(Creature* pCreature)
 {
     return new boss_coren_direbrewAI(pCreature);
 }
@@ -171,9 +171,7 @@ bool QuestRewarded_npc_coren_direbrew(Player* pPlayer, Creature* pCreature, Ques
 
 void AddSC_boss_coren_direbrew()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_coren_direbrew";
     pNewScript->GetAI = &GetAI_boss_coren_direbrew;
     pNewScript->pQuestRewardedNPC = &QuestRewarded_npc_coren_direbrew;

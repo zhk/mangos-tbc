@@ -18,9 +18,11 @@
 
 #include "Server/SQLStorages.h"
 
-const char CreatureInfosrcfmt[] = "isssiiiiiiiiifiiiiliiiiiffiiiiiiiiffffffiiiiffffiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiss";
-const char CreatureInfodstfmt[] = "isssiiiiiiiiifiiiiliiiiiffiiiiiiiiffffffiiiiffffiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiisi";
+const char CreatureInfosrcfmt[] = "isssiiiiiiiifiiiiliiiiiffiiiiiiiiffffffiiiiffffiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiss";
+const char CreatureInfodstfmt[] = "isssiiiiiiiifiiiiliiiiiffiiiiiiiiffffffiiiiffffiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiisi";
 const char CreatureDataAddonInfofmt[] = "iiibbiis";
+const char CreatureConditionalSpawnSrcFmt[] = "iiix";
+const char CreatureConditionalSpawnDstFmt[] = "iii";
 const char CreatureModelfmt[] = "iffffbii";
 const char CreatureInfoAddonInfofmt[] = "iiibbiis";
 const char EquipmentInfofmt[] = "iiii";
@@ -34,11 +36,14 @@ const char InstanceTemplatesrcfmt[] = "iiiiiisl";
 const char InstanceTemplatedstfmt[] = "iiiiiiil";
 const char WorldTemplatesrcfmt[] = "is";
 const char WorldTemplatedstfmt[] = "ii";
-const char ConditionsFmt[] = "iiiix";
-const char CreatureTemplateSpellsFmt[] = "iiiii";
+const char ConditionsFmt[] = "iiiiiiix";
+const char CreatureTemplateSpellsFmt[] = "iiiiiiiii";
 const char SpellScriptTargetFmt[] = "iiii";
-const char SpellEntryfmt[] = "iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffiiiiiiiiiiiiiiiiiiiiifffiiiiiiiiiiiiiiifffiiiissssssssssssssssssssssssssssssssiiiiiLiiifffiiiii";
+const char SpellEntryfmt[] = "iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiffffffiiiiiiiiiiiiiiiiiiiiifffiiiiiiiiiiiiiiifffiiiissssssssssssssssssssssssssssssssiiiiiLiiiifffiiiiiiiii";
+const char SpellConefmt[] = "ii";
 const char DungeonEncounterFmt[] = "iiiiissssssssssssssssii";
+const char FactionEntryfmt[] = "iiiiiiiiiiiiiiiiiiiffiissssssssssssssss";
+const char WorldSafeLocsFmt[] = "iiffffs";
 
 SQLStorage sCreatureStorage(CreatureInfosrcfmt, CreatureInfodstfmt, "Entry", "creature_template");
 SQLStorage sCreatureDataAddonStorage(CreatureDataAddonInfofmt, "guid", "creature_addon");
@@ -52,7 +57,11 @@ SQLStorage sInstanceTemplate(InstanceTemplatesrcfmt, InstanceTemplatedstfmt, "ma
 SQLStorage sWorldTemplate(WorldTemplatesrcfmt, WorldTemplatedstfmt, "map", "world_template");
 SQLStorage sConditionStorage(ConditionsFmt, "condition_entry", "conditions");
 SQLStorage sSpellTemplate(SpellEntryfmt, "id", "spell_template");
+SQLStorage sSpellCones(SpellConefmt, "id", "spell_cone");
 SQLStorage sDungeonEncounterStore(DungeonEncounterFmt, "id", "instance_dungeon_encounters");
+SQLStorage sFactionStore(FactionEntryfmt, "entry", "faction_store");
+SQLStorage sCreatureConditionalSpawnStore(CreatureConditionalSpawnSrcFmt, CreatureConditionalSpawnDstFmt, "guid", "creature_conditional_spawn");
+SQLStorage sWorldSafeLocsStore(WorldSafeLocsFmt, "id", "world_safe_locs");
 
 SQLHashStorage sGOStorage(GameObjectInfosrcfmt, GameObjectInfodstfmt, "entry", "gameobject_template");
 SQLHashStorage sCreatureTemplateSpellsStorage(CreatureTemplateSpellsFmt, "entry", "creature_template_spells");

@@ -21,7 +21,7 @@ SDComment: Missing reset function after killing a boss for Ohgan, Thekal.
 SDCategory: Zul'Gurub
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "zulgurub.h"
 
 instance_zulgurub::instance_zulgurub(Map* pMap) : ScriptedInstance(pMap),
@@ -172,7 +172,7 @@ void instance_zulgurub::DoLowerHakkarHitPoints()
 {
     if (Creature* pHakkar = GetSingleCreatureFromStorage(NPC_HAKKAR))
     {
-        if (pHakkar->isAlive() && pHakkar->GetMaxHealth() > HP_LOSS_PER_PRIEST)
+        if (pHakkar->IsAlive() && pHakkar->GetMaxHealth() > HP_LOSS_PER_PRIEST)
         {
             pHakkar->SetMaxHealth(pHakkar->GetMaxHealth() - HP_LOSS_PER_PRIEST);
             pHakkar->SetHealth(pHakkar->GetHealth() - HP_LOSS_PER_PRIEST);
@@ -194,10 +194,10 @@ void instance_zulgurub::Load(const char* chrIn)
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
                >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6] >> m_auiEncounter[7];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -238,7 +238,7 @@ bool AreaTrigger_at_zulgurub(Player* pPlayer, AreaTriggerEntry const* pAt)
 {
     if (pAt->id == AREATRIGGER_ENTER || pAt->id == AREATRIGGER_ALTAR)
     {
-        if (pPlayer->isGameMaster() || pPlayer->isDead())
+        if (pPlayer->isGameMaster() || pPlayer->IsDead())
             return false;
 
         if (instance_zulgurub* pInstance = (instance_zulgurub*)pPlayer->GetInstanceData())
@@ -250,9 +250,7 @@ bool AreaTrigger_at_zulgurub(Player* pPlayer, AreaTriggerEntry const* pAt)
 
 void AddSC_instance_zulgurub()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_zulgurub";
     pNewScript->GetInstanceData = &GetInstanceData_instance_zulgurub;
     pNewScript->RegisterSelf();

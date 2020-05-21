@@ -24,20 +24,23 @@
 #include "MotionGenerators/MovementGenerator.h"
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 #include "Entities/Pet.h"
+#include "Entities/Player.h"
 #include "Log.h"
 #include "BaseAI/PetAI.h"
 #include "BaseAI/PossessedAI.h"
+#include "BaseAI/CritterAI.h"
+#include "AI/PlayerAI/PlayerAI.h"
 
 INSTANTIATE_SINGLETON_1(CreatureAIRegistry);
 INSTANTIATE_SINGLETON_1(MovementGeneratorRegistry);
 
 namespace FactorySelector
 {
-    CreatureAI* selectAI(Creature* creature)
+    UnitAI* selectAI(Creature* creature)
     {
         // Allow scripting AI for normal creatures and not controlled pets (guardians and mini-pets)
-        if ((!creature->IsPet() || !static_cast<Pet*>(creature)->isControlled()) && !creature->HasCharmer())
-            if (CreatureAI* scriptedAI = sScriptDevAIMgr.GetCreatureAI(creature))
+        if ((!creature->IsPet() || !static_cast<Pet*>(creature)->isControlled()) || creature->HasCharmer())
+            if (UnitAI* scriptedAI = sScriptDevAIMgr.GetCreatureAI(creature))
                 return scriptedAI;
 
         CreatureAIRegistry& ai_registry(CreatureAIRepository::Instance());
@@ -57,17 +60,19 @@ namespace FactorySelector
         else if (creature->IsTotem())
             ai_factory = ai_registry.GetRegistryItem("TotemAI");
         else if (!ainame.empty())           // select by script name
-            ai_factory = ai_registry.GetRegistryItem(ainame.c_str());
+            ai_factory = ai_registry.GetRegistryItem(ainame);
         else if (creature->IsGuard())
             ai_factory = ai_registry.GetRegistryItem("GuardAI");
+        else if (creature->IsCritter())
+            ai_factory = ai_registry.GetRegistryItem("CritterAI");
         else                                // select by permit check
         {
             int best_val = PERMIT_BASE_NO;
             typedef CreatureAIRegistry::RegistryMapType RMT;
             RMT const& l = ai_registry.GetRegisteredItems();
-            for (RMT::const_iterator iter = l.begin(); iter != l.end(); ++iter)
+            for (const auto& iter : l)
             {
-                const CreatureAICreator* factory = iter->second;
+                const CreatureAICreator* factory = iter.second;
                 const SelectableAI* p = dynamic_cast<const SelectableAI*>(factory);
                 MANGOS_ASSERT(p != nullptr);
                 int val = p->Permit(creature);
@@ -86,21 +91,18 @@ namespace FactorySelector
         return (ai_factory == nullptr ? new NullCreatureAI(creature) : ai_factory->Create(creature));
     }
 
-    CreatureAI* GetSpecificAI(Unit* unit, std::string const& ainame)
+    UnitAI* GetSpecificAI(Unit* unit, std::string const& ainame)
     {
-        // little hack to not have to change all AI to use Unit instead of Creature
-        Creature* creature = unit->GetTypeId() == TYPEID_UNIT ? static_cast<Creature*>(unit) : nullptr;
-
         CreatureAIRegistry& ai_registry(CreatureAIRepository::Instance());
         const CreatureAICreator* ai_factory = ai_registry.GetRegistryItem(ainame);
-        if (creature)
-            return  ai_factory->Create(creature);
-        else if (ainame == "PetAI")
-            return (new PetAI(unit));
-        else if (ainame == "PossessedAI")
+        if (unit->GetTypeId() == TYPEID_UNIT)
+            return  ai_factory->Create(static_cast<Creature*>(unit));
+        if (ainame == "PetAI")
+            return GetClassAI(Classes(unit->getClass()), static_cast<Player*>(unit));
+        if (ainame == "PossessedAI")
             return (new PossessedAI(unit));
 
-        sLog.outError("FactorySelector::GetSpecificAI> Cannot get %s AI for %s", ainame.c_str(), unit->GetObjectGuid().GetString().c_str());
+        sLog.outError("FactorySelector::GetSpecificAI> Cannot get %s AI for %s", ainame.c_str(), unit->GetGuidStr().c_str());
         MANGOS_ASSERT(false);
         return nullptr;
     }

@@ -21,7 +21,7 @@ SDComment: Thrall reset on server restart is not supported, because of core limi
 SDCategory: Caverns of Time, Old Hillsbrad Foothills
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "old_hillsbrad.h"
 
 instance_old_hillsbrad::instance_old_hillsbrad(Map* pMap) : ScriptedInstance(pMap),
@@ -97,7 +97,7 @@ void instance_old_hillsbrad::OnCreatureEnterCombat(Creature* pCreature)
     {
         case NPC_DRAKE:
             SetData(TYPE_DRAKE, IN_PROGRESS);
-            DoUpdateWorldState(WORLD_STATE_OH, 0);
+            DoUpdateWorldState(WORLD_STATE_OLD_HILLSBRAD_BARREL_COUNT, 0);
             break;
         case NPC_SKARLOC: SetData(TYPE_SKARLOC, IN_PROGRESS); break;
         case NPC_EPOCH:   SetData(TYPE_EPOCH, IN_PROGRESS);   break;
@@ -131,7 +131,7 @@ void instance_old_hillsbrad::HandleThrallRelocation()
     {
         debug_log("SD2: Instance Old Hillsbrad: Thrall relocation");
 
-        if (!pThrall->isAlive())
+        if (!pThrall->IsAlive())
             pThrall->Respawn();
 
         // epoch failed, reloc to inn
@@ -162,7 +162,7 @@ void instance_old_hillsbrad::SetData(uint32 uiType, uint32 uiData)
 
                 // Update barrels used and world state
                 ++m_uiBarrelCount;
-                DoUpdateWorldState(WORLD_STATE_OH, m_uiBarrelCount);
+                DoUpdateWorldState(WORLD_STATE_OLD_HILLSBRAD_BARREL_COUNT, m_uiBarrelCount);
 
                 debug_log("SD2: Instance Old Hillsbrad: go_barrel_old_hillsbrad count %u", m_uiBarrelCount);
 
@@ -283,10 +283,10 @@ void instance_old_hillsbrad::Load(const char* chrIn)
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
                >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     // custom reload - if the escort event or the Epoch event are not done, then reset the escort
@@ -307,9 +307,9 @@ void instance_old_hillsbrad::UpdateLodgeQuestCredit()
 
     if (!players.isEmpty())
     {
-        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
+        for (const auto& player : players)
         {
-            if (Player* pPlayer = itr->getSource())
+            if (Player* pPlayer = player.getSource())
                 pPlayer->KilledMonsterCredit(NPC_LODGE_QUEST_TRIGGER);
         }
     }
@@ -357,9 +357,7 @@ bool ProcessEventId_event_go_barrel_old_hillsbrad(uint32 /*uiEventId*/, Object* 
 
 void AddSC_instance_old_hillsbrad()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_old_hillsbrad";
     pNewScript->GetInstanceData = &GetInstanceData_instance_old_hillsbrad;
     pNewScript->RegisterSelf();

@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Deadmines
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "deadmines.h"
 
 enum
@@ -70,7 +70,7 @@ struct boss_mr_smiteAI : public ScriptedAI
 
     void AttackedBy(Unit* pAttacker) override
     {
-        if (m_creature->getVictim())
+        if (m_creature->GetVictim())
             return;
 
         if (m_uiPhase > PHASE_3)
@@ -84,14 +84,7 @@ struct boss_mr_smiteAI : public ScriptedAI
         if (m_uiPhase > PHASE_3)
             return;
 
-        if (m_creature->Attack(pWho, true))
-        {
-            m_creature->AddThreat(pWho);
-            m_creature->SetInCombatWith(pWho);
-            pWho->SetInCombatWith(m_creature);
-
-            m_creature->GetMotionMaster()->MoveChase(pWho);
-        }
+        ScriptedAI::AttackStart(pWho);
     }
 
     void JustReachedHome() override
@@ -151,7 +144,7 @@ struct boss_mr_smiteAI : public ScriptedAI
 
     void PhaseEquipEnd()
     {
-        // We don't have getVictim, so select from threat list
+        // We don't have GetVictim, so select from threat list
         Unit* pVictim = m_creature->SelectAttackingTarget(ATTACKING_TARGET_TOPAGGRO, 0);
 
         if (!pVictim)
@@ -172,7 +165,7 @@ struct boss_mr_smiteAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         {
             if (m_uiEquipTimer)
             {
@@ -182,8 +175,7 @@ struct boss_mr_smiteAI : public ScriptedAI
                     m_uiEquipTimer -= uiDiff;
                     return;
                 }
-                else
-                    m_uiEquipTimer = 0;
+                m_uiEquipTimer = 0;
             }
 
             switch (m_uiPhase)
@@ -215,7 +207,7 @@ struct boss_mr_smiteAI : public ScriptedAI
                         m_uiPhase = PHASE_EQUIP_START;
                         m_uiEquipTimer = 2500;
 
-                        // will clear getVictim (m_attacking)
+                        // will clear GetVictim (m_attacking)
                         m_creature->AttackStop(true);
                         m_creature->RemoveAurasDueToSpell(SPELL_NIBLE_REFLEXES);
                     }
@@ -233,7 +225,7 @@ struct boss_mr_smiteAI : public ScriptedAI
                         m_uiPhase = PHASE_EQUIP_START;
                         m_uiEquipTimer = 2500;
 
-                        // will clear getVictim (m_attacking)
+                        // will clear GetVictim (m_attacking)
                         m_creature->AttackStop(true);
                         m_creature->RemoveAurasDueToSpell(SPELL_THRASH);
                     }
@@ -245,7 +237,7 @@ struct boss_mr_smiteAI : public ScriptedAI
             {
                 if (m_uiSlamTimer < uiDiff)
                 {
-                    if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SMITE_SLAM) == CAST_OK)
+                    if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SMITE_SLAM) == CAST_OK)
                         m_uiSlamTimer = 11000;
                 }
                 else
@@ -259,16 +251,14 @@ struct boss_mr_smiteAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_mr_smite(Creature* pCreature)
+UnitAI* GetAI_boss_mr_smite(Creature* pCreature)
 {
     return new boss_mr_smiteAI(pCreature);
 }
 
 void AddSC_boss_mr_smite()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_mr_smite";
     pNewScript->GetAI = &GetAI_boss_mr_smite;
     pNewScript->RegisterSelf();

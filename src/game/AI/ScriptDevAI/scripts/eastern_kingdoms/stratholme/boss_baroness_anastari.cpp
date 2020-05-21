@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Stratholme
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -79,7 +79,7 @@ struct boss_baroness_anastariAI : public ScriptedAI
 
                 // Check for possessed player
                 Player* pPlayer = m_creature->GetMap()->GetPlayer(m_possessedPlayer);
-                if (!pPlayer || !pPlayer->isAlive())
+                if (!pPlayer || !pPlayer->IsAlive())
                 {
                     m_creature->RemoveAurasDueToSpell(SPELL_POSSESS_INV);
                     m_uiPossessEndTimer = 0;
@@ -102,7 +102,7 @@ struct boss_baroness_anastariAI : public ScriptedAI
                 m_uiPossessEndTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // BansheeWail
@@ -161,16 +161,14 @@ struct boss_baroness_anastariAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_baroness_anastari(Creature* pCreature)
+UnitAI* GetAI_boss_baroness_anastari(Creature* pCreature)
 {
     return new boss_baroness_anastariAI(pCreature);
 }
 
 void AddSC_boss_baroness_anastari()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_baroness_anastari";
     pNewScript->GetAI = &GetAI_boss_baroness_anastari;
     pNewScript->RegisterSelf();

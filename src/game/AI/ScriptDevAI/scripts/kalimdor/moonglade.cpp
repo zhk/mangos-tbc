@@ -27,10 +27,10 @@ npc_keeper_remulos
 boss_eranikus
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "Globals/ObjectMgr.h"
-#include "AI/ScriptDevAI/scripts/world/world_map_scripts.h"
+#include "AI/ScriptDevAI/scripts/kalimdor/world_kalimdor.h"
 
 /*######
 # npc_clintar_dw_spirit
@@ -115,7 +115,7 @@ struct npc_clintar_dw_spiritAI : public npc_escortAI
         if (CreatureInfo const* pTemp = GetCreatureTemplateStore(m_creature->GetEntry()))
             m_creature->SetDisplayId(Creature::ChooseDisplayId(pTemp));
 
-        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
+        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_NPC);
         m_creature->SetVisibility(VISIBILITY_OFF);
     }
 
@@ -127,7 +127,7 @@ struct npc_clintar_dw_spiritAI : public npc_escortAI
             return;
 
         m_creature->SetVisibility(VISIBILITY_ON);
-        m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
+        m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_NPC);
         Start(false, pStarter && pStarter->GetTypeId() == TYPEID_PLAYER ? (Player*)pStarter : nullptr);
     }
 
@@ -137,7 +137,7 @@ struct npc_clintar_dw_spiritAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_clintar_dw_spirit(Creature* pCreature)
+UnitAI* GetAI_npc_clintar_dw_spirit(Creature* pCreature)
 {
     return new npc_clintar_dw_spiritAI(pCreature);
 }
@@ -459,7 +459,7 @@ struct npc_keeper_remulosAI : public npc_escortAI, private DialogueHelper
     void DoHandleOutro(Creature* pTarget)
     {
         if (Player* pPlayer = GetPlayerForEscort())
-            pPlayer->GroupEventHappens(QUEST_NIGHTMARE_MANIFESTS, pTarget);
+            pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_NIGHTMARE_MANIFESTS, pTarget);
 
         m_uiOutroTimer = 3000;
     }
@@ -549,7 +549,7 @@ struct npc_keeper_remulosAI : public npc_escortAI, private DialogueHelper
         }
 
         // Combat spells
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiHealTimer < uiDiff)
@@ -583,7 +583,7 @@ struct npc_keeper_remulosAI : public npc_escortAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_npc_keeper_remulos(Creature* pCreature)
+UnitAI* GetAI_npc_keeper_remulos(Creature* pCreature)
 {
     return new npc_keeper_remulosAI(pCreature);
 }
@@ -677,7 +677,6 @@ struct boss_eranikusAI : public ScriptedAI
         if (m_creature->GetHealthPercent() < 20.0f)
         {
             m_creature->RemoveAllAurasOnEvade();
-            m_creature->DeleteThreatList();
             m_creature->CombatStop(true);
             m_creature->LoadCreatureAddon(true);
 
@@ -866,7 +865,7 @@ struct boss_eranikusAI : public ScriptedAI
         }
 
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // Move Tyrande after she is summoned
@@ -962,7 +961,7 @@ struct boss_eranikusAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_eranikus(Creature* pCreature)
+UnitAI* GetAI_boss_eranikus(Creature* pCreature)
 {
     return new boss_eranikusAI(pCreature);
 }
@@ -987,9 +986,7 @@ bool GOUse_go_omen_cluster(Player* /*pPlayer*/, GameObject* pGo)
 
 void AddSC_moonglade()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_clintar_dw_spirit";
     pNewScript->GetAI = &GetAI_npc_clintar_dw_spirit;
     pNewScript->pEffectDummyNPC = &EffectDummyCreature_npc_clintar_dw_spirit;

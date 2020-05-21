@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Auchindoun, Sethekk Halls
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -72,7 +72,9 @@ struct boss_darkweaver_sythAI : public ScriptedAI
     uint32 m_uiShadowshockTimer;
     uint32 m_uiChainlightningTimer;
 
-    float m_fHpCheck;
+    bool FirstSummon;
+    bool SecondSummon;
+    bool ThirdSummon;
 
     void Reset() override
     {
@@ -82,7 +84,9 @@ struct boss_darkweaver_sythAI : public ScriptedAI
         m_uiShadowshockTimer    = 17000;
         m_uiChainlightningTimer = urand(6000, 9000);
 
-        m_fHpCheck              = 90.0f;
+        FirstSummon = false;
+        SecondSummon = false;
+        ThirdSummon = false;
     }
 
     void Aggro(Unit* /*pWho*/) override
@@ -94,10 +98,16 @@ struct boss_darkweaver_sythAI : public ScriptedAI
             case 2: DoScriptText(SAY_AGGRO_3, m_creature); break;
         }
     }
+    
+    void JustReachedHome() override
+    {
+        m_creature->RemoveGuardians();
+    }
 
     void JustDied(Unit* /*pKiller*/) override
     {
         DoScriptText(SAY_DEATH, m_creature);
+        m_creature->RemoveGuardians();
     }
 
     void KilledUnit(Unit* /*pVictim*/) override
@@ -110,24 +120,8 @@ struct boss_darkweaver_sythAI : public ScriptedAI
 
     void JustSummoned(Creature* pSummoned) override
     {
-        switch (pSummoned->GetEntry())
-        {
-            case NPC_FIRE_ELEMENTAL:
-                pSummoned->ApplySpellImmune(0, IMMUNITY_SCHOOL, SPELL_SCHOOL_MASK_FIRE, true);
-                break;
-            case NPC_FROST_ELEMENTAL:
-                pSummoned->ApplySpellImmune(0, IMMUNITY_SCHOOL, SPELL_SCHOOL_MASK_FROST, true);
-                break;
-            case NPC_ARCANE_ELEMENTAL:
-                pSummoned->ApplySpellImmune(0, IMMUNITY_SCHOOL, SPELL_SCHOOL_MASK_ARCANE, true);
-                break;
-            case NPC_SHADOW_ELEMENTAL:
-                pSummoned->ApplySpellImmune(0, IMMUNITY_SCHOOL, SPELL_SCHOOL_MASK_SHADOW, true);
-                break;
-        }
-
-        if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
-            pSummoned->AI()->AttackStart(pTarget);
+        if (Unit* Target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            pSummoned->AI()->AttackStart(Target);
     }
 
     // Wrapper to handle the elementals summon
@@ -146,19 +140,29 @@ struct boss_darkweaver_sythAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
-        // Summon elementals at 90%, 50% and 10% health
-        if (m_creature->GetHealthPercent() < m_fHpCheck)
+        // Summon elementals at 90%, 55% and 15% health
+        if (m_creature->GetHealthPercent() < 90.0f && !FirstSummon)
         {
             SythSummoning();
-            m_fHpCheck -= 40.0f;
+            FirstSummon = true;
+        }
+        if (m_creature->GetHealthPercent() < 55.0f && !SecondSummon)
+        {
+            SythSummoning();
+            SecondSummon = true;
+        }
+        if (m_creature->GetHealthPercent() < 15.0f && !ThirdSummon)
+        {
+            SythSummoning();
+            ThirdSummon = true;
         }
 
         if (m_uiFlameshockTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, m_bIsRegularMode ? SPELL_FLAME_SHOCK : SPELL_FLAME_SHOCK_H) == CAST_OK)
                     m_uiFlameshockTimer = m_bIsRegularMode ? urand(13000, 28000) : urand(11000, 20000);
@@ -169,7 +173,7 @@ struct boss_darkweaver_sythAI : public ScriptedAI
 
         if (m_uiArcaneshockTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, m_bIsRegularMode ? SPELL_ARCANE_SHOCK : SPELL_ARCANE_SHOCK_H) == CAST_OK)
                     m_uiArcaneshockTimer = m_bIsRegularMode ? urand(13000, 28000) : urand(11000, 20000);
@@ -180,7 +184,7 @@ struct boss_darkweaver_sythAI : public ScriptedAI
 
         if (m_uiFrostshockTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, m_bIsRegularMode ? SPELL_FROST_SHOCK : SPELL_FROST_SHOCK_H) == CAST_OK)
                     m_uiFrostshockTimer = m_bIsRegularMode ? urand(13000, 28000) : urand(11000, 20000);
@@ -191,7 +195,7 @@ struct boss_darkweaver_sythAI : public ScriptedAI
 
         if (m_uiShadowshockTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, m_bIsRegularMode ? SPELL_SHADOW_SHOCK : SPELL_SHADOW_SHOCK_H) == CAST_OK)
                     m_uiShadowshockTimer = m_bIsRegularMode ? urand(13000, 28000) : urand(11000, 20000);
@@ -202,7 +206,7 @@ struct boss_darkweaver_sythAI : public ScriptedAI
 
         if (m_uiChainlightningTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, m_bIsRegularMode ? SPELL_CHAIN_LIGHTNING : SPELL_CHAIN_LIGHTNING_H) == CAST_OK)
                     m_uiChainlightningTimer = m_bIsRegularMode ? urand(14000, 26000) : urand(13000, 19000);
@@ -215,16 +219,14 @@ struct boss_darkweaver_sythAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_darkweaver_syth(Creature* pCreature)
+UnitAI* GetAI_boss_darkweaver_syth(Creature* pCreature)
 {
     return new boss_darkweaver_sythAI(pCreature);
 }
 
 void AddSC_boss_darkweaver_syth()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_darkweaver_syth";
     pNewScript->GetAI = &GetAI_boss_darkweaver_syth;
     pNewScript->RegisterSelf();

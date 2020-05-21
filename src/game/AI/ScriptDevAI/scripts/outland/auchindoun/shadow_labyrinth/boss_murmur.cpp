@@ -21,7 +21,7 @@ SDComment: Sonic Boom and Murmur's Touch require additional research and core su
 SDCategory: Auchindoun, Shadow Labyrinth
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "shadow_labyrinth.h"
 
 enum
@@ -79,7 +79,6 @@ struct boss_murmurAI : public Scripted_NoMovementAI
     {
         m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
         m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
-        m_creature->SetIgnoreRangedTargets(true);
         m_thunderingParams.range.minRange = SPELL_THUNDERING_STORM_MINRANGE;
         m_thunderingParams.range.maxRange = SPELL_THUNDERING_STORM_MAXRANGE;
         Reset();
@@ -99,6 +98,8 @@ struct boss_murmurAI : public Scripted_NoMovementAI
 
     void Reset() override
     {
+        m_creature->SetImmobilizedState(true);
+
         m_uiSonicBoomTimer       = urand(SPELL_SONIC_BOOM_MIN_TIMER, SPELL_SONIC_BOOM_MAX_TIMER);
         m_uiMurmursTouchTimer    = m_bIsRegularMode ? SPELL_MURMURS_TOUCH_TIMER_N : urand(SPELL_MURMURS_TOUCH_MIN_TIMER_H, SPELL_MURMURS_TOUCH_MAX_TIMER_H);
         m_uiResonanceTimer       = urand(SPELL_RESONANCE_MIN_TIMER, SPELL_RESONANCE_MAX_TIMER);
@@ -156,7 +157,7 @@ struct boss_murmurAI : public Scripted_NoMovementAI
 		    //Sonic Shock
             if (m_uiSonicShockTimer < uiDiff)
             {
-                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_SONIC_SHOCK, SELECT_FLAG_IN_MELEE_RANGE))
+                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_SONIC_SHOCK, SELECT_FLAG_PLAYER | SELECT_FLAG_IN_MELEE_RANGE))
                 {
                     if (DoCastSpellIfCan(pTarget, SPELL_SONIC_SHOCK) == CAST_OK)
                         m_uiSonicShockTimer = urand(SPELL_SONIC_SHOCK_MIN_TIMER, SPELL_SONIC_SHOCK_MAX_TIMER);
@@ -180,7 +181,7 @@ struct boss_murmurAI : public Scripted_NoMovementAI
         }
 
         // Resonance_Timer - cast if no target is in range
-        if (m_creature->getVictim())
+        if (m_creature->GetVictim() && m_creature->CanReachWithMeleeAttack(m_creature->GetVictim()))
             DoMeleeAttackIfReady();
         else
         {
@@ -195,16 +196,14 @@ struct boss_murmurAI : public Scripted_NoMovementAI
     }
 };
 
-CreatureAI* GetAI_boss_murmur(Creature* pCreature)
+UnitAI* GetAI_boss_murmur(Creature* pCreature)
 {
     return new boss_murmurAI(pCreature);
 }
 
 void AddSC_boss_murmur()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_murmur";
     pNewScript->GetAI = &GetAI_boss_murmur;
     pNewScript->RegisterSelf();

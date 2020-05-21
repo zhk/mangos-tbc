@@ -21,7 +21,7 @@ SDComment: Contains GO for Iron Clad door event
 SDCategory: Deadmines
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "deadmines.h"
 
 bool GOUse_go_defias_cannon(Player* /*pPlayer*/, GameObject* pGo)
@@ -40,9 +40,7 @@ bool GOUse_go_defias_cannon(Player* /*pPlayer*/, GameObject* pGo)
 
 void AddSC_deadmines()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "go_defias_cannon";
     pNewScript->pGOUse = &GOUse_go_defias_cannon;
     pNewScript->RegisterSelf();

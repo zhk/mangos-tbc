@@ -21,7 +21,7 @@ SDComment: Timers may need some fine adjustments
 SDCategory: Tempest Keep, The Botanica
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -75,8 +75,8 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
             ++m_uiFrayerAddsCount;
 
         // Attack players
-        if (m_creature->getVictim())
-            pSummoned->AI()->AttackStart(m_creature->getVictim());
+        if (m_creature->GetVictim())
+            pSummoned->AI()->AttackStart(m_creature->GetVictim());
     }
 
     void SummonedCreatureJustDied(Creature* pSummoned) override
@@ -90,8 +90,8 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
             {
                 m_uiTreeFormEndTimer = 0;
 
-                if (m_creature->getVictim())
-                    m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim());
+                if (m_creature->GetVictim())
+                    m_creature->GetMotionMaster()->MoveChase(m_creature->GetVictim());
 
                 // Interrupt all spells and remove auras
                 m_creature->InterruptNonMeleeSpells(true);
@@ -106,10 +106,10 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
     {
         switch (urand(0, 3))
         {
-            case 0: DoCastSpellIfCan(m_creature, SPELL_PLANT_WHITE); break;
-            case 1: DoCastSpellIfCan(m_creature, SPELL_PLANT_GREEN); break;
-            case 2: DoCastSpellIfCan(m_creature, SPELL_PLANT_BLUE);  break;
-            case 3: DoCastSpellIfCan(m_creature, SPELL_PLANT_RED);   break;
+            case 0: DoCastSpellIfCan(nullptr, SPELL_PLANT_WHITE); break;
+            case 1: DoCastSpellIfCan(nullptr, SPELL_PLANT_GREEN); break;
+            case 2: DoCastSpellIfCan(nullptr, SPELL_PLANT_BLUE);  break;
+            case 3: DoCastSpellIfCan(nullptr, SPELL_PLANT_RED);   break;
         }
     }
 
@@ -125,20 +125,20 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiTreeFormTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature, SPELL_TRANQUILITY) == CAST_OK)
+            if (DoCastSpellIfCan(nullptr, SPELL_TRANQUILITY) == CAST_OK)
             {
                 // Note: This should remove only negative auras
                 m_creature->RemoveAllAuras();
 
-                DoCastSpellIfCan(m_creature, SPELL_TREE_FORM, CAST_TRIGGERED);
+                DoCastSpellIfCan(nullptr, SPELL_TREE_FORM, CAST_TRIGGERED);
                 DoScriptText(urand(0, 1) ? SAY_TREE_1 : SAY_TREE_2, m_creature);
 
-                m_creature->GetMotionMaster()->MoveIdle();
+                SetCombatMovement(false);
                 m_bCanMoveFree       = false;
                 m_uiFrayerTimer      = 1000;
                 m_uiTreeFormEndTimer = 45000;
@@ -153,7 +153,7 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
         {
             if (m_uiFrayerTimer <= uiDiff)
             {
-                if (DoCastSpellIfCan(m_creature, SPELL_SUMMON_FRAYER, CAST_TRIGGERED) == CAST_OK)
+                if (DoCastSpellIfCan(nullptr, SPELL_SUMMON_FRAYER, CAST_TRIGGERED) == CAST_OK)
                     m_uiFrayerTimer = 0;
             }
             else
@@ -165,8 +165,7 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
         {
             if (m_uiTreeFormEndTimer <= uiDiff)
             {
-                if (m_creature->getVictim())
-                    m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim());
+                SetCombatMovement(true);
                 m_bCanMoveFree = true;
                 m_uiTreeFormEndTimer = 0;
             }
@@ -191,16 +190,14 @@ struct boss_high_botanist_freywinnAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_high_botanist_freywinn(Creature* pCreature)
+UnitAI* GetAI_boss_high_botanist_freywinn(Creature* pCreature)
 {
     return new boss_high_botanist_freywinnAI(pCreature);
 }
 
 void AddSC_boss_high_botanist_freywinn()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_high_botanist_freywinn";
     pNewScript->GetAI = &GetAI_boss_high_botanist_freywinn;
     pNewScript->RegisterSelf();

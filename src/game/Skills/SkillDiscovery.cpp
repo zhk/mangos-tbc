@@ -110,7 +110,7 @@ void LoadSkillDiscoveryTable()
         }
         else if (reqSkillOrSpell == 0)                      // skill case
         {
-            SkillLineAbilityMapBounds bounds = sSpellMgr.GetSkillLineAbilityMapBounds(spellId);
+            SkillLineAbilityMapBounds bounds = sSpellMgr.GetSkillLineAbilityMapBoundsBySpellId(spellId);
 
             if (bounds.first == bounds.second)
             {
@@ -144,11 +144,11 @@ uint32 GetSkillDiscoverySpell(uint32 skillId, uint32 spellId, Player* player)
 
     if (tab != SkillDiscoveryStore.end())
     {
-        for (SkillDiscoveryList::const_iterator item_iter = tab->second.begin(); item_iter != tab->second.end(); ++item_iter)
+        for (auto item_iter : tab->second)
         {
-            if (roll_chance_f(item_iter->chance * sWorld.getConfig(CONFIG_FLOAT_RATE_SKILL_DISCOVERY)) &&
-                    !player->HasSpell(item_iter->spellId))
-                return item_iter->spellId;
+            if (roll_chance_f(item_iter.chance * sWorld.getConfig(CONFIG_FLOAT_RATE_SKILL_DISCOVERY)) &&
+                    !player->HasSpell(item_iter.spellId))
+                return item_iter.spellId;
         }
 
         return 0;
@@ -161,11 +161,11 @@ uint32 GetSkillDiscoverySpell(uint32 skillId, uint32 spellId, Player* player)
     tab = SkillDiscoveryStore.find(-(int32)skillId);
     if (tab != SkillDiscoveryStore.end())
     {
-        for (SkillDiscoveryList::const_iterator item_iter = tab->second.begin(); item_iter != tab->second.end(); ++item_iter)
+        for (auto item_iter : tab->second)
         {
-            if (roll_chance_f(item_iter->chance * sWorld.getConfig(CONFIG_FLOAT_RATE_SKILL_DISCOVERY)) &&
-                    !player->HasSpell(item_iter->spellId))
-                return item_iter->spellId;
+            if (roll_chance_f(item_iter.chance * sWorld.getConfig(CONFIG_FLOAT_RATE_SKILL_DISCOVERY)) &&
+                    !player->HasSpell(item_iter.spellId))
+                return item_iter.spellId;
         }
 
         return 0;

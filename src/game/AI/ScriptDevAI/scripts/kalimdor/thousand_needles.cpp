@@ -29,7 +29,7 @@ npc_paoka_swiftmountain
 npc_plucky_johnson
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -57,12 +57,14 @@ struct npc_kanatiAI : public npc_escortAI
         switch (uiPointId)
         {
             case 0:
+                m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
                 DoScriptText(SAY_KAN_START, m_creature);
                 DoSpawnGalak();
                 break;
             case 1:
+                m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_PROTECT_KANATI, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_PROTECT_KANATI, m_creature);
                 break;
         }
     }
@@ -81,7 +83,7 @@ struct npc_kanatiAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_kanati(Creature* pCreature)
+UnitAI* GetAI_npc_kanati(Creature* pCreature)
 {
     return new npc_kanatiAI(pCreature);
 }
@@ -128,7 +130,11 @@ float m_afBanditLoc[6][6] =
 
 struct npc_lakota_windsongAI : public npc_escortAI
 {
-    npc_lakota_windsongAI(Creature* pCreature) : npc_escortAI(pCreature) { Reset(); }
+    npc_lakota_windsongAI(Creature* pCreature) : npc_escortAI(pCreature)
+    {
+        SetReactState(REACT_DEFENSIVE);
+        Reset();
+    }
 
     void Reset() override { }
 
@@ -150,7 +156,7 @@ struct npc_lakota_windsongAI : public npc_escortAI
                 break;
             case 45:
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_FREE_AT_LAST, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_FREE_AT_LAST, m_creature);
                 break;
         }
     }
@@ -164,7 +170,7 @@ struct npc_lakota_windsongAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_lakota_windsong(Creature* pCreature)
+UnitAI* GetAI_npc_lakota_windsong(Creature* pCreature)
 {
     return new npc_lakota_windsongAI(pCreature);
 }
@@ -205,7 +211,11 @@ float m_afWyvernLoc[3][3] =
 
 struct npc_paoka_swiftmountainAI : public npc_escortAI
 {
-    npc_paoka_swiftmountainAI(Creature* pCreature) : npc_escortAI(pCreature) { Reset(); }
+    npc_paoka_swiftmountainAI(Creature* pCreature) : npc_escortAI(pCreature)
+    {
+        SetReactState(REACT_DEFENSIVE);
+        Reset();
+    }
 
     void Reset() override { }
 
@@ -222,21 +232,21 @@ struct npc_paoka_swiftmountainAI : public npc_escortAI
                 break;
             case 27:
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_HOMEWARD, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_HOMEWARD, m_creature);
                 break;
         }
     }
 
     void DoSpawnWyvern()
     {
-        for (int i = 0; i < 3; ++i)
+        for (auto& i : m_afWyvernLoc)
             m_creature->SummonCreature(NPC_WYVERN,
-                                       m_afWyvernLoc[i][0], m_afWyvernLoc[i][1], m_afWyvernLoc[i][2], 0.0f,
+                i[0], i[1], i[2], 0.0f,
                                        TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 60000);
     }
 };
 
-CreatureAI* GetAI_npc_paoka_swiftmountain(Creature* pCreature)
+UnitAI* GetAI_npc_paoka_swiftmountain(Creature* pCreature)
 {
     return new npc_paoka_swiftmountainAI(pCreature);
 }
@@ -303,13 +313,10 @@ struct npc_plucky_johnsonAI : public ScriptedAI
         {
             if (m_creature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP))
                 return;
-            else
-            {
-                m_creature->SetFactionTemporary(FACTION_FRIENDLY, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_RESTORE_COMBAT_STOP);
-                m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
-                m_creature->CastSpell(m_creature, SPELL_PLUCKY_HUMAN, TRIGGERED_NONE);
-                m_creature->HandleEmote(EMOTE_ONESHOT_WAVE);
-            }
+            m_creature->SetFactionTemporary(FACTION_FRIENDLY, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_RESTORE_COMBAT_STOP);
+            m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+            m_creature->CastSpell(m_creature, SPELL_PLUCKY_HUMAN, TRIGGERED_NONE);
+            m_creature->HandleEmote(EMOTE_ONESHOT_WAVE);
         }
     }
 
@@ -319,25 +326,24 @@ struct npc_plucky_johnsonAI : public ScriptedAI
         {
             if (m_uiResetTimer < uiDiff)
             {
-                if (!m_creature->getVictim())
+                if (!m_creature->GetVictim())
                     EnterEvadeMode();
                 else
                     m_creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
 
                 return;
             }
-            else
-                m_uiResetTimer -= uiDiff;
+            m_uiResetTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_npc_plucky_johnson(Creature* pCreature)
+UnitAI* GetAI_npc_plucky_johnson(Creature* pCreature)
 {
     return new npc_plucky_johnsonAI(pCreature);
 }
@@ -364,9 +370,7 @@ bool GossipSelect_npc_plucky_johnson(Player* pPlayer, Creature* pCreature, uint3
 
 void AddSC_thousand_needles()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_kanati";
     pNewScript->GetAI = &GetAI_npc_kanati;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_kanati;

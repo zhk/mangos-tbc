@@ -7,6 +7,7 @@
 
 #include "Maps/InstanceData.h"
 #include "Maps/Map.h"
+#include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 
 enum EncounterState
 {
@@ -33,10 +34,10 @@ class ScriptedInstance : public InstanceData
         ~ScriptedInstance() {}
 
         // Default accessor functions
-        GameObject* GetSingleGameObjectFromStorage(uint32 entry);
-        Creature* GetSingleCreatureFromStorage(uint32 entry, bool skipDebugLog = false);
-        void GetCreatureGuidVectorFromStorage(uint32 entry, GuidVector& entryGuidVector, bool skipDebugLog = false);
-        void GetGameObjectGuidVectorFromStorage(uint32 entry, GuidVector& entryGuidVector, bool skipDebugLog = false);
+        GameObject* GetSingleGameObjectFromStorage(uint32 entry) const;
+        Creature* GetSingleCreatureFromStorage(uint32 entry, bool skipDebugLog = false) const;
+        void GetCreatureGuidVectorFromStorage(uint32 entry, GuidVector& entryGuidVector, bool skipDebugLog = false) const;
+        void GetGameObjectGuidVectorFromStorage(uint32 entry, GuidVector& entryGuidVector, bool skipDebugLog = false) const;
 
         // Change active state of doors or buttons
         void DoUseDoorOrButton(ObjectGuid guid, uint32 withRestoreTime = 0, bool useAlternativeState = false);
@@ -51,12 +52,12 @@ class ScriptedInstance : public InstanceData
         void DoToggleGameObjectFlags(uint32 entry, uint32 GOflags, bool apply);
 
         // Sends world state update to all players in instance
-        void DoUpdateWorldState(uint32 stateId, uint32 stateData);
+        virtual void DoUpdateWorldState(uint32 stateId, uint32 stateData);
 
         // Get a Player from map
-        Player* GetPlayerInMap(bool onlyAlive = false, bool canBeGamemaster = true);
+        Player* GetPlayerInMap(bool bOnlyAlive = false, bool bCanBeGamemaster = true) const;
 
-        /// Wrapper for simulating map-wide text in this instance. It is expected that the Creature is stored in m_npcEntryGuidStore if loaded.
+        // Wrapper for simulating map-wide text in this instance. It is expected that the Creature is stored in m_npcEntryGuidStore if loaded.
         void DoOrSimulateScriptTextForThisInstance(int32 textEntry, uint32 creatureEntry)
         {
             // Prevent debug output in GetSingleCreatureFromStorage
@@ -65,10 +66,10 @@ class ScriptedInstance : public InstanceData
 
     protected:
         // Storage for GO-Guids and NPC-Guids
-        EntryGuidMap m_goEntryGuidStore;                   ///< Store unique GO-Guids by entry
-        EntryGuidMap m_npcEntryGuidStore;                  ///< Store unique NPC-Guids by entry
-        EntryGuidCollection m_npcEntryGuidCollection;      ///< Store all Guids by entry
-        EntryGuidCollection m_goEntryGuidCollection;       ///< Store all Guids by entry
+        EntryGuidMap m_goEntryGuidStore;                   // Store unique GO-Guids by entry
+        EntryGuidMap m_npcEntryGuidStore;                  // Store unique NPC-Guids by entry
+        EntryGuidCollection m_npcEntryGuidCollection;      // Store all Guids by entry
+        EntryGuidCollection m_goEntryGuidCollection;       // Store all Guids by entry
 };
 
 // Class for world maps (May need additional zone-wide functions later on)
@@ -103,7 +104,8 @@ class DialogueHelper
         // The array MUST be terminated by {0,0,0}
         DialogueHelper(DialogueEntry const* dialogueArray);
         // The array MUST be terminated by {0,0,0,0,0}
-        DialogueHelper(DialogueEntryTwoSide const* dialogueTwoSide);
+        DialogueHelper(DialogueEntryTwoSide const* dialogueTwoSideArray);
+        virtual ~DialogueHelper() = default;
 
         /// Function to initialize the dialogue helper for instances. If not used with instances, GetSpeakerByEntry MUST be overwritten to obtain the speakers
         void InitializeDialogueHelper(ScriptedInstance* instance, bool canSimulateText = false) { m_instance = instance; m_canSimulate = canSimulateText; }

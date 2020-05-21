@@ -135,6 +135,7 @@ namespace Movement
             spline.set_length(spline.last(), spline.isCyclic() ? 1000 : 1);
         }
         point_Idx = spline.first();
+        speed = args.velocity;
     }
 
     void MoveSpline::Initialize(const MoveSplineInitArgs& args)
@@ -155,7 +156,7 @@ namespace Movement
         init_spline(args);
     }
 
-    MoveSpline::MoveSpline() : m_Id(0), time_passed(0), point_Idx(0), point_Idx_offset(0)
+    MoveSpline::MoveSpline() : m_Id(0), speed(0), time_passed(0), point_Idx(0), point_Idx_offset(0)
     {
         splineflags.done = true;
     }
@@ -188,10 +189,9 @@ namespace Movement
                 MAX_OFFSET = (1 << 11) / 2,
             };
             Vector3 middle = (path.front() + path.back()) / 2;
-            Vector3 offset;
             for (uint32 i = 1; i < path.size() - 1; ++i)
             {
-                offset = path[i] - middle;
+                Vector3 offset = path[i] - middle;
                 if (fabs(offset.x) >= MAX_OFFSET || fabs(offset.y) >= MAX_OFFSET || fabs(offset.z) >= MAX_OFFSET)
                 {
                     sLog.outError("MoveSplineInitArgs::_checkPathBounds check failed");
@@ -204,7 +204,7 @@ namespace Movement
 
 /// ============================================================================================
 
-    MoveSpline::UpdateResult MoveSpline::_updateState(int32& ms_time_diff)
+    MoveSpline::UpdateResult MoveSpline::_updateState(uint32& ms_time_diff)
     {
         if (Finalized())
         {
@@ -214,8 +214,7 @@ namespace Movement
 
         UpdateResult result = Result_None;
 
-        int32 minimal_diff = std::min(ms_time_diff, segment_time_elapsed());
-        MANGOS_ASSERT(minimal_diff >= 0);
+        uint32 minimal_diff = std::min(ms_time_diff, segment_time_elapsed());
         time_passed += minimal_diff;
         ms_time_diff -= minimal_diff;
 

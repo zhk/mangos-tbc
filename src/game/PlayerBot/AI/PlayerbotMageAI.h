@@ -50,7 +50,7 @@ enum MageSpells
     BLINK_1                         = 1953,
     BLIZZARD_1                      = 10,
     CLEARCASTING_1                  = 12536,
-    COLD_SNAP_1                     = 12472,
+    COLD_SNAP_1                     = 11958,
     COMBUSTION_1                    = 11129,
     CONE_OF_COLD_1                  = 120,
     CONJURE_FOOD_1                  = 587,
@@ -125,6 +125,9 @@ class PlayerbotMageAI : PlayerbotClassAI
         Item* FindManaGem() const;
 
         CombatManeuverReturns CastSpell(uint32 nextAction, Unit* pTarget = nullptr) { return CastSpellWand(nextAction, pTarget, SHOOT); }
+
+        // Dispel disease or negative magic effects from the target
+        CombatManeuverReturns DispelPlayer(Player* target);
 
         static bool BuffHelper(PlayerbotAI* ai, uint32 spellId, Unit* target);
 

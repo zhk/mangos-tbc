@@ -21,7 +21,7 @@ SDComment: Quest support: 6523.
 SDCategory: Stonetalon Mountains
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -71,13 +71,13 @@ struct npc_kayaAI : public npc_escortAI
                 DoScriptText(SAY_END, m_creature);
 
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_PROTECT_KAYA, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_PROTECT_KAYA, m_creature);
                 break;
         }
     }
 };
 
-CreatureAI* GetAI_npc_kaya(Creature* pCreature)
+UnitAI* GetAI_npc_kaya(Creature* pCreature)
 {
     return new npc_kayaAI(pCreature);
 }
@@ -88,7 +88,7 @@ bool QuestAccept_npc_kaya(Player* pPlayer, Creature* pCreature, Quest const* pQu
 
     if (pQuest->GetQuestId() == QUEST_PROTECT_KAYA)
     {
-        pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN);
+        pCreature->SetFactionTemporary(FACTION_ESCORT_H_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
         DoScriptText(SAY_START, pCreature);
 
         if (npc_kayaAI* pEscortAI = dynamic_cast<npc_kayaAI*>(pCreature->AI()))
@@ -103,9 +103,7 @@ bool QuestAccept_npc_kaya(Player* pPlayer, Creature* pCreature, Quest const* pQu
 
 void AddSC_stonetalon_mountains()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_kaya";
     pNewScript->GetAI = &GetAI_npc_kaya;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_kaya;

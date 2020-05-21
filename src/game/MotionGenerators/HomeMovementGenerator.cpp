@@ -17,6 +17,7 @@
  */
 
 #include "HomeMovementGenerator.h"
+#include "Maps/Map.h"
 #include "Entities/Creature.h"
 #include "AI/BaseAI/CreatureAI.h"
 #include "Movement/MoveSplineInit.h"
@@ -24,6 +25,11 @@
 
 void HomeMovementGenerator<Creature>::Initialize(Creature& owner)
 {
+    wasActive = owner.isActiveObject();
+    if (!wasActive)
+        owner.SetActiveObjectState(true);
+    owner.GetCombatManager().SetEvadeState(EVADE_HOME);
+
     _setTargetLocation(owner);
 }
 
@@ -36,19 +42,28 @@ void HomeMovementGenerator<Creature>::_setTargetLocation(Creature& owner)
     if (owner.hasUnitState(UNIT_STAT_NOT_MOVE))
         return;
 
-    Movement::MoveSplineInit init(owner);
     float x, y, z, o;
     // at apply we can select more nice return points base at current movegen
     if (owner.GetMotionMaster()->empty() || !owner.GetMotionMaster()->top()->GetResetPosition(owner, x, y, z, o))
+        owner.GetCombatStartPosition(x, y, z, o);
+
+    if (x == 0 && x == y && y == z)
         owner.GetRespawnCoord(x, y, z, &o);
 
-    init.SetFacing(o);
-    init.MoveTo(x, y, z, true);
+    PathFinder path(&owner);
+
+    path.calculate(x, y, z, true);
+
+    Movement::MoveSplineInit init(owner);
+    init.MovebyPath(path.getPath());
     init.SetWalk(!runHome);
+    init.SetFacing(o);
+    if (path.getPathType() & (PATHFIND_NOPATH | PATHFIND_SHORTCUT))
+        init.SetVelocity(400.f);
     init.Launch();
 
     arrived = false;
-    owner.clearUnitState(UNIT_STAT_ALL_DYN_STATES);
+    owner.clearUnitState(static_cast<uint32>(UNIT_STAT_ALL_DYN_STATES));
 }
 
 bool HomeMovementGenerator<Creature>::Update(Creature& owner, const uint32& /*time_diff*/)
@@ -59,13 +74,25 @@ bool HomeMovementGenerator<Creature>::Update(Creature& owner, const uint32& /*ti
 
 void HomeMovementGenerator<Creature>::Finalize(Creature& owner)
 {
+    owner.GetCombatManager().SetEvadeState(EVADE_NONE);
     if (arrived)
     {
         if (owner.GetTemporaryFactionFlags() & TEMPFACTION_RESTORE_REACH_HOME)
             owner.ClearTemporaryFaction();
 
-        owner.SetWalk(!owner.hasUnitState(UNIT_STAT_RUNNING_STATE) && !owner.IsLevitating(), false);
+        owner.SetWalk(!owner.hasUnitState(UNIT_STAT_RUNNING_STATE), false);
         owner.LoadCreatureAddon(true);
         owner.AI()->JustReachedHome();
+
+        if (owner.IsTemporarySummon())
+        {
+            if (owner.GetSpawnerGuid().IsCreatureOrPet())
+                if (Creature* pSummoner = owner.GetMap()->GetAnyTypeCreature(owner.GetSpawnerGuid()))
+                    if (pSummoner->AI())
+                        pSummoner->AI()->SummonedJustReachedHome(&owner);
+        }
+
+        if (!wasActive)
+            owner.SetActiveObjectState(false);
     }
 }

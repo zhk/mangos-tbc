@@ -17,6 +17,7 @@
  */
 
 #include <zlib.h>
+#include <utility>
 
 #include "Common.h"
 #include "Tools/Language.h"
@@ -39,6 +40,7 @@
 #include "OutdoorPvP/OutdoorPvP.h"
 #include "Entities/Pet.h"
 #include "Social/SocialMgr.h"
+#include "GMTickets/GMTicketMgr.h"
 
 void WorldSession::HandleRepopRequestOpcode(WorldPacket& recv_data)
 {
@@ -46,7 +48,7 @@ void WorldSession::HandleRepopRequestOpcode(WorldPacket& recv_data)
 
     recv_data.read_skip<uint8>();
 
-    if (GetPlayer()->isAlive() || GetPlayer()->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
+    if (GetPlayer()->IsAlive() || GetPlayer()->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
         return;
 
     // the world update order is sessions, players, creatures
@@ -54,7 +56,7 @@ void WorldSession::HandleRepopRequestOpcode(WorldPacket& recv_data)
     // creatures can kill players
     // so if the server is lagging enough the player can
     // release spirit after he's killed but before he is updated
-    if (GetPlayer()->getDeathState() == JUST_DIED)
+    if (GetPlayer()->GetDeathState() == JUST_DIED)
     {
         DEBUG_LOG("HandleRepopRequestOpcode: got request after player %s(%d) was killed and before he was updated", GetPlayer()->GetName(), GetPlayer()->GetGUIDLow());
         GetPlayer()->KillPlayer();
@@ -87,6 +89,10 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recv_data)
 
     if (zones_count > 10)
         return;                                             // can't be received from real client or broken packet
+
+    // GM ticket hook shift+click to read
+    if (sTicketMgr.HookGMTicketWhoQuery(player_name, GetPlayer()))
+        return;
 
     for (uint32 i = 0; i < zones_count; ++i)
     {
@@ -268,7 +274,7 @@ void WorldSession::HandleLogoutRequestOpcode(WorldPacket& /*recv_data*/)
     DEBUG_LOG("WORLD: Received opcode CMSG_LOGOUT_REQUEST, security %u", GetSecurity());
 
     // Can not logout if...
-    if (GetPlayer()->isInCombat() ||                        //...is in combat
+    if (GetPlayer()->IsInCombat() ||                        //...is in combat
             //...is jumping ...is falling
             GetPlayer()->m_movementInfo.HasMovementFlag(MovementFlags(MOVEFLAG_FALLING | MOVEFLAG_FALLINGFAR)))
     {
@@ -285,19 +291,8 @@ void WorldSession::HandleLogoutRequestOpcode(WorldPacket& /*recv_data*/)
     if (GetPlayer()->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING) || GetPlayer()->IsTaxiFlying() ||
             GetSecurity() >= (AccountTypes)sWorld.getConfig(CONFIG_UINT32_INSTANT_LOGOUT))
     {
-        LogoutPlayer(true);
+        LogoutPlayer();
         return;
-    }
-
-    // not set flags if player can't free move to prevent lost state at logout cancel
-    if (GetPlayer()->CanFreeMove())
-    {
-        float height = GetPlayer()->GetMap()->GetHeight(GetPlayer()->GetPositionX(), GetPlayer()->GetPositionY(), GetPlayer()->GetPositionZ());
-        if ((GetPlayer()->GetPositionZ() < height + 0.1f) && !(GetPlayer()->IsInWater()))
-            GetPlayer()->SetStandState(UNIT_STAND_STATE_SIT);
-
-        GetPlayer()->SetRoot(true);
-        GetPlayer()->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_STUNNED);
     }
 
     WorldPacket data(SMSG_LOGOUT_RESPONSE, 5);
@@ -305,6 +300,11 @@ void WorldSession::HandleLogoutRequestOpcode(WorldPacket& /*recv_data*/)
     data << uint8(0);
     SendPacket(data);
     LogoutRequest(time(nullptr));
+
+    // Set flags and states set by logout:
+    GetPlayer()->SetStunnedByLogout(true);
+
+    DEBUG_LOG("WORLD: Sent SMSG_LOGOUT_RESPONSE Message");
 }
 
 void WorldSession::HandlePlayerLogoutOpcode(WorldPacket& /*recv_data*/)
@@ -321,20 +321,10 @@ void WorldSession::HandleLogoutCancelOpcode(WorldPacket& /*recv_data*/)
     WorldPacket data(SMSG_LOGOUT_CANCEL_ACK, 0);
     SendPacket(data);
 
-    // not remove flags if can't free move - its not set in Logout request code.
-    if (GetPlayer()->CanFreeMove())
-    {
-        //!we can move again
-        GetPlayer()->SetRoot(false);
+    // Undo flags and states set by logout:
+    GetPlayer()->SetStunnedByLogout(false);
 
-        //! Stand Up
-        GetPlayer()->SetStandState(UNIT_STAND_STATE_STAND);
-
-        //! DISABLE_ROTATE
-        GetPlayer()->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_STUNNED);
-    }
-
-    DEBUG_LOG("WORLD: sent SMSG_LOGOUT_CANCEL_ACK Message");
+    DEBUG_LOG("WORLD: Sent SMSG_LOGOUT_CANCEL_ACK Message");
 }
 
 void WorldSession::HandleTogglePvP(WorldPacket& recv_data)
@@ -369,10 +359,7 @@ void WorldSession::HandleZoneUpdateOpcode(WorldPacket& recv_data)
 
     DETAIL_LOG("WORLD: Received opcode CMSG_ZONEUPDATE: newzone is %u", newZone);
 
-    // use server side data
-    uint32 newzone, newarea;
-    GetPlayer()->GetZoneAndAreaId(newzone, newarea);
-    GetPlayer()->UpdateZone(newzone, newarea);
+    GetPlayer()->SetDelayedZoneUpdate(true, newZone);
 }
 
 void WorldSession::HandleSetTargetOpcode(WorldPacket& recv_data)
@@ -399,6 +386,10 @@ void WorldSession::HandleSetSelectionOpcode(WorldPacket& recv_data)
 
     _player->SetSelectionGuid(guid);
 
+    if (Unit* mover = _player->GetMover()) // when player has a mover and the mover is a 
+        if (mover != _player)
+            mover->SetSelectionGuid(guid);
+
     // update reputation list if need
     Unit* unit = ObjectAccessor::GetUnit(*_player, guid);   // can select group members at diff maps
     if (!unit)
@@ -410,11 +401,21 @@ void WorldSession::HandleSetSelectionOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleStandStateChangeOpcode(WorldPacket& recv_data)
 {
-    // DEBUG_LOG("WORLD: Received opcode CMSG_STANDSTATECHANGE"); -- too many spam in log at lags/debug stop
     uint32 animstate;
     recv_data >> animstate;
 
-    _player->SetStandState(animstate);
+    switch (animstate)
+    {
+        case UNIT_STAND_STATE_STAND:
+        case UNIT_STAND_STATE_SIT:
+        case UNIT_STAND_STATE_SLEEP:
+        case UNIT_STAND_STATE_KNEEL:
+            break;
+        default:
+            return;
+    }
+
+    _player->SetStandState(uint8(animstate), true);
 }
 
 void WorldSession::HandleContactListOpcode(WorldPacket& recv_data)
@@ -490,7 +491,7 @@ void WorldSession::HandleAddFriendOpcodeCallBack(QueryResult* result, uint32 acc
                 DEBUG_LOG("WORLD: %s's friend list is full.", player->GetName());
             }
 
-            player->GetSocial()->SetFriendNote(friendGuid, friendNote);
+            player->GetSocial()->SetFriendNote(friendGuid, std::move(friendNote));
         }
     }
 
@@ -626,7 +627,7 @@ void WorldSession::HandleReclaimCorpseOpcode(WorldPacket& recv_data)
     ObjectGuid guid;
     recv_data >> guid;
 
-    if (GetPlayer()->isAlive())
+    if (GetPlayer()->IsAlive())
         return;
 
     // do not allow corpse reclaim in arena
@@ -665,7 +666,7 @@ void WorldSession::HandleResurrectResponseOpcode(WorldPacket& recv_data)
     recv_data >> guid;
     recv_data >> status;
 
-    if (GetPlayer()->isAlive())
+    if (GetPlayer()->IsAlive())
         return;
 
     if (status == 0)
@@ -677,7 +678,7 @@ void WorldSession::HandleResurrectResponseOpcode(WorldPacket& recv_data)
     if (!GetPlayer()->isRessurectRequestedBy(guid))
         return;
 
-    GetPlayer()->ResurectUsingRequestData();                // will call spawncorpsebones
+    GetPlayer()->ResurrectUsingRequestDataInit();                // will call spawncorpsebones
 }
 
 void WorldSession::HandleAreaTriggerOpcode(WorldPacket& recv_data)
@@ -717,7 +718,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket& recv_data)
         return;
 
     uint32 quest_id = sObjectMgr.GetQuestForAreaTrigger(Trigger_ID);
-    if (quest_id && player->isAlive() && player->IsActiveQuest(quest_id))
+    if (quest_id && player->IsAlive() && player->IsActiveQuest(quest_id))
     {
         Quest const* pQuest = sObjectMgr.GetQuestTemplate(quest_id);
         if (pQuest)
@@ -757,9 +758,9 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket& recv_data)
         return;
 
     // ghost resurrected at enter attempt to dungeon with corpse (including fail enter cases)
-    if (!player->isAlive() && targetMapEntry->IsDungeon())
+    if (!player->IsAlive() && targetMapEntry->IsDungeon())
     {
-        int32 corpseMapId = 0;
+        uint32 corpseMapId = 0;
         if (Corpse* corpse = player->GetCorpse())
             corpseMapId = corpse->GetMapId();
 
@@ -801,7 +802,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket& recv_data)
         player->SpawnCorpseBones();
     }
 
-    if (at->conditionId && !sObjectMgr.IsPlayerMeetToCondition(at->conditionId, player, player->GetMap(), nullptr, CONDITION_FROM_AREATRIGGER_TELEPORT))
+    if (at->conditionId && !sObjectMgr.IsConditionSatisfied(at->conditionId, player, player->GetMap(), nullptr, CONDITION_FROM_AREATRIGGER_TELEPORT))
     {
         /*TODO player->GetSession()->SendAreaTriggerMessage("%s", "YOU SHALL NOT PASS!");*/
         return;
@@ -865,34 +866,15 @@ void WorldSession::HandleSetActionButtonOpcode(WorldPacket& recv_data)
 void WorldSession::HandleCompleteCinematic(WorldPacket& /*recv_data*/)
 {
     DEBUG_LOG("WORLD: Received opcode CMSG_COMPLETE_CINEMATIC");
+    // If player has sight bound to visual waypoint NPC we should remove it
+    GetPlayer()->StopCinematic();
 }
 
 void WorldSession::HandleNextCinematicCamera(WorldPacket& /*recv_data*/)
 {
     DEBUG_LOG("WORLD: Received opcode CMSG_NEXT_CINEMATIC_CAMERA");
-}
-
-void WorldSession::HandleMoveTimeSkippedOpcode(WorldPacket& recv_data)
-{
-    /*  WorldSession::Update( WorldTimer::getMSTime() );*/
-    DEBUG_LOG("WORLD: Received opcode CMSG_MOVE_TIME_SKIPPED");
-
-    recv_data >> Unused<uint64>();
-    recv_data >> Unused<uint32>();
-
-    /*
-        ObjectGuid guid;
-        uint32 time_skipped;
-        recv_data >> guid;
-        recv_data >> time_skipped;
-        DEBUG_LOG("WORLD: Received opcode CMSG_MOVE_TIME_SKIPPED");
-
-        /// TODO
-        must be need use in mangos
-        We substract server Lags to move time ( AntiLags )
-        for exmaple
-        GetPlayer()->ModifyLastMoveTime( -int32(time_skipped) );
-    */
+    // Sent by client when cinematic actually begun. So we begin the server side process
+    GetPlayer()->StartCinematic();
 }
 
 void WorldSession::HandleFeatherFallAck(WorldPacket& recv_data)
@@ -905,8 +887,19 @@ void WorldSession::HandleFeatherFallAck(WorldPacket& recv_data)
 
 void WorldSession::HandleMoveUnRootAck(WorldPacket& recv_data)
 {
+    DEBUG_LOG("WORLD: Received opcode CMSG_FORCE_MOVE_UNROOT_ACK");
+    // Pre-Wrath: broadcast unroot
+    ObjectGuid guid;
+    recv_data >> guid;
     // no used
     recv_data.rpos(recv_data.wpos());                       // prevent warnings spam
+
+    Unit* mover = _player->GetMover();
+    if (mover && mover->GetObjectGuid() == guid && mover->m_movementInfo.HasMovementFlag(MOVEFLAG_ROOT))
+    {
+        mover->m_movementInfo.RemoveMovementFlag(MOVEFLAG_ROOT);
+        mover->SendMoveRoot(false, true);
+    }
     /*
         ObjectGuid guid;
         recv_data >> guid;
@@ -929,8 +922,20 @@ void WorldSession::HandleMoveUnRootAck(WorldPacket& recv_data)
 
 void WorldSession::HandleMoveRootAck(WorldPacket& recv_data)
 {
+    DEBUG_LOG("WORLD: Received opcode CMSG_FORCE_MOVE_ROOT_ACK");
+    // Pre-Wrath: broadcast root
+    ObjectGuid guid;
+    recv_data >> guid;
     // no used
     recv_data.rpos(recv_data.wpos());                       // prevent warnings spam
+
+    Unit* mover = _player->GetMover();
+    if (mover && mover->GetObjectGuid() == guid && !mover->m_movementInfo.HasMovementFlag(MOVEFLAG_ROOT))
+    {
+        mover->m_movementInfo.RemoveMovementFlag(movementFlagsMask);
+        mover->m_movementInfo.AddMovementFlag(MOVEFLAG_ROOT);
+        mover->SendMoveRoot(true, true);
+    }
     /*
         ObjectGuid guid;
         recv_data >> guid;
@@ -1276,7 +1281,7 @@ void WorldSession::HandleRealmSplitOpcode(WorldPacket& recv_data)
     // 0x1 realm split
     // 0x2 realm split pending
     data << split_date;
-    SendPacket(data);
+    SendPacket(data, true);
     // DEBUG_LOG("response sent %u", unk);
 }
 
@@ -1322,24 +1327,6 @@ void WorldSession::HandleSetTitleOpcode(WorldPacket& recv_data)
         title = 0;
 
     GetPlayer()->SetUInt32Value(PLAYER_CHOSEN_TITLE, title);
-}
-
-void WorldSession::HandleTimeSyncResp(WorldPacket& recv_data)
-{
-    uint32 counter, clientTicks;
-    recv_data >> counter >> clientTicks;
-
-    DEBUG_LOG("WORLD: Received opcode CMSG_TIME_SYNC_RESP: counter %u, client ticks %u, time since last sync %u", counter, clientTicks, clientTicks - _player->m_timeSyncClient);
-
-    if (counter != _player->m_timeSyncCounter - 1)
-        DEBUG_LOG(" WORLD: Opcode CMSG_TIME_SYNC_RESP -- Wrong time sync counter from %s (cheater?)", _player->GetGuidStr().c_str());
-
-    uint32 ourTicks = clientTicks + (WorldTimer::getMSTime() - _player->m_timeSyncServer);
-
-    // diff should be small
-    DEBUG_LOG(" WORLD: Opcode CMSG_TIME_SYNC_RESP -- Our ticks: %u, diff %u, latency %u", ourTicks, ourTicks - clientTicks, GetLatency());
-
-    _player->m_timeSyncClient = clientTicks;
 }
 
 void WorldSession::HandleResetInstancesOpcode(WorldPacket& /*recv_data*/)
@@ -1450,5 +1437,44 @@ void WorldSession::HandleSetTaxiBenchmarkOpcode(WorldPacket& recv_data)
     uint8 mode;
     recv_data >> mode;
 
+    if (mode)
+        _player->SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_TAXI_BENCHMARK);
+    else
+        _player->RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_TAXI_BENCHMARK);
+
     DEBUG_LOG("Client used \"/timetest %d\" command", mode);
+}
+
+void WorldSession::HandleCommentatorModeOpcode(WorldPacket& recv_data)
+{
+    DEBUG_LOG("WORLD: Received opcode CMSG_COMMENTATOR_ENABLE");
+
+    uint32 action;
+    recv_data >> action;
+
+    Player* _player = GetPlayer();
+
+    // Allow commentator mode only for players in GM mode
+    if (!_player->isGameMaster())
+        return;
+
+    // This opcode can be used in three ways:
+    // 0 - Request to turn commentator mode off
+    // 1 - Request to turn commentator mode on
+    // 2 - Request to toggle current commentator mode status
+    switch (action)
+    {
+        case 0:
+            _player->RemoveFlag(PLAYER_FLAGS, (PLAYER_FLAGS_COMMENTATOR | PLAYER_FLAGS_COMMENTATOR_UBER));
+            break;
+        case 1:
+            _player->SetFlag(PLAYER_FLAGS, (PLAYER_FLAGS_COMMENTATOR | PLAYER_FLAGS_COMMENTATOR_UBER));
+            break;
+        case 2:
+            _player->ToggleFlag(PLAYER_FLAGS, (PLAYER_FLAGS_COMMENTATOR | PLAYER_FLAGS_COMMENTATOR_UBER));
+            break;
+        default:
+            sLog.outError("WorldSession::HandleCommentatorModeOpcode: player %d sent an invalid commentator mode action", _player->GetGUIDLow());
+            return;
+    }
 }

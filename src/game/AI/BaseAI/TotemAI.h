@@ -32,6 +32,7 @@ class TotemAI : public CreatureEventAI
     public:
         explicit TotemAI(Creature* creature);
 
+        void SpellHit(Unit* unit, const SpellEntry* spellInfo) override;
         void MoveInLineOfSight(Unit* who) override;
         void AttackStart(Unit* who) override;
         void EnterEvadeMode() override;
@@ -40,6 +41,7 @@ class TotemAI : public CreatureEventAI
         void UpdateAI(const uint32 diff) override;
         static int Permissible(const Creature* creature);
     protected:
+        std::string GetAIName() override { return "TotemAI"; }
         Totem& getTotem() const;
 
     private:

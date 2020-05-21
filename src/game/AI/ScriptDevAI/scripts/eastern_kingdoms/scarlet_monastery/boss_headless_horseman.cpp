@@ -21,7 +21,7 @@ SDComment: Intro and epilog are handled by DB. Script might require some fine-tu
 SDCategory: Scarlet Monastery
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "Entities/TemporarySpawn.h"
 
 enum
@@ -168,15 +168,15 @@ struct boss_headless_horsemanAI : public ScriptedAI
             pSummoned->CastSpell(pSummoned, SPELL_SPROUTING, TRIGGERED_NONE);
             pSummoned->CastSpell(pSummoned, SPELL_PUMPKIN_AURA, TRIGGERED_OLD_TRIGGERED);
             pSummoned->CastSpell(pSummoned, SPELL_PUMPKIN_LIFE_CYCLE, TRIGGERED_OLD_TRIGGERED);
-            pSummoned->AI()->AttackStart(m_creature->getVictim());
+            pSummoned->AI()->AttackStart(m_creature->GetVictim());
         }
     }
 
-    void DamageTaken(Unit* /*pDealer*/, uint32& uiDamage, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDealer*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
-        if (m_fightPhase != PHASE_HEAD_TOSS && uiDamage >= m_creature->GetHealth())
+        if (m_fightPhase != PHASE_HEAD_TOSS && damage >= m_creature->GetHealth())
         {
-            uiDamage = 0;
+            damage = std::min(damage, m_creature->GetHealth() - 1);
             DoTossHead();
         }
     }
@@ -210,7 +210,7 @@ struct boss_headless_horsemanAI : public ScriptedAI
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
     {
         // rejoin head on request
         if (eventType == AI_EVENT_CUSTOM_A && pInvoker->GetEntry() == NPC_HEAD_OF_HORSEMAN)
@@ -280,7 +280,7 @@ struct boss_headless_horsemanAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         switch (m_fightPhase)
@@ -303,7 +303,7 @@ struct boss_headless_horsemanAI : public ScriptedAI
                 {
                     if (m_uiConflagrationTimer < uiDiff)
                     {
-                        if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1))
+                        if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER))
                         {
                             if (DoCastSpellIfCan(pTarget, SPELL_CONFLAGRATION) == CAST_OK)
                             {
@@ -322,7 +322,7 @@ struct boss_headless_horsemanAI : public ScriptedAI
                 // cleave - all phases
                 if (m_uiCleaveTimer < uiDiff)
                 {
-                    if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HORSEMAN_CLEAVE) == CAST_OK)
+                    if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HORSEMAN_CLEAVE) == CAST_OK)
                         m_uiCleaveTimer = 5000;
                 }
                 else
@@ -344,7 +344,7 @@ struct boss_headless_horsemanAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_headless_horseman(Creature* pCreature)
+UnitAI* GetAI_boss_headless_horseman(Creature* pCreature)
 {
     return new boss_headless_horsemanAI(pCreature);
 }
@@ -379,7 +379,7 @@ struct boss_head_of_horsemanAI : public ScriptedAI
         }
     }
 
-    void DamageTaken(Unit* /*pDealer*/, uint32& /*uiDamage*/, DamageEffectType /*damagetype*/) override
+    void DamageTaken(Unit* /*pDealer*/, uint32& /*damage*/, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
     {
         // allow him to die the last phase
         if (m_uiHeadPhase >= 3)
@@ -393,7 +393,7 @@ struct boss_head_of_horsemanAI : public ScriptedAI
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 /*uiMiscValue*/) override
     {
         if (pInvoker->GetEntry() != NPC_HEADLESS_HORSEMAN)
             return;
@@ -432,19 +432,17 @@ struct boss_head_of_horsemanAI : public ScriptedAI
             DoCastSpellIfCan(m_creature, SPELL_HEAL_BODY, CAST_TRIGGERED);
     }
 
-    void UpdateAI(const uint32 uiDiff) override { }
+    void UpdateAI(const uint32 /*uiDiff*/) override { }
 };
 
-CreatureAI* GetAI_boss_head_of_horseman(Creature* pCreature)
+UnitAI* GetAI_boss_head_of_horseman(Creature* pCreature)
 {
     return new boss_head_of_horsemanAI(pCreature);
 }
 
 void AddSC_boss_headless_horseman()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_headless_horseman";
     pNewScript->GetAI = GetAI_boss_headless_horseman;
     pNewScript->RegisterSelf();

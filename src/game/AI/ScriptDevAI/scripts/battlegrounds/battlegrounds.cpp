@@ -21,7 +21,8 @@ SDComment: Spirit guides in battlegrounds will revive all players every 30 sec
 SDCategory: Battlegrounds
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
+#include "Spells/Scripts/SpellScript.h"
 
 // **** Script Info ****
 // Spiritguides in battlegrounds resurrecting many players at once
@@ -72,9 +73,9 @@ struct npc_spirit_guideAI : public ScriptedAI
 
         Map::PlayerList const& PlayerList = pMap->GetPlayers();
 
-        for (Map::PlayerList::const_iterator itr = PlayerList.begin(); itr != PlayerList.end(); ++itr)
+        for (const auto& itr : PlayerList)
         {
-            Player* pPlayer = itr->getSource();
+            Player* pPlayer = itr.getSource();
             if (!pPlayer || !pPlayer->IsWithinDistInMap(m_creature, 20.0f) || !pPlayer->HasAura(SPELL_WAITING_TO_RESURRECT))
                 continue;
 
@@ -97,18 +98,33 @@ bool GossipHello_npc_spirit_guide(Player* pPlayer, Creature* /*pCreature*/)
     return true;
 }
 
-CreatureAI* GetAI_npc_spirit_guide(Creature* pCreature)
+struct GYMidTrigger : public SpellScript
 {
-    return new npc_spirit_guideAI(pCreature);
-}
+    void OnEffectExecute(Spell* spell, SpellEffectIndex /*effIdx*/) const
+    {
+        // TODO: Fix when go casting is fixed
+        WorldObject* obj = spell->GetAffectiveCasterObject();
+        if (obj->IsGameObject() && spell->GetUnitTarget()->IsPlayer())
+        {
+            Player* player = static_cast<Player*>(spell->GetUnitTarget());
+            if (BattleGround* bg = player->GetBattleGround())
+            {
+                // check if it's correct bg
+                if (bg->GetTypeID() == BATTLEGROUND_AV)
+                    bg->EventPlayerClickedOnFlag(player, static_cast<GameObject*>(obj));
+                return;
+            }
+        }
+    }
+};
 
 void AddSC_battleground()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_spirit_guide";
-    pNewScript->GetAI = &GetAI_npc_spirit_guide;
+    pNewScript->GetAI = &GetNewAIInstance<npc_spirit_guideAI>;
     pNewScript->pGossipHello = &GossipHello_npc_spirit_guide;
     pNewScript->RegisterSelf();
+
+    RegisterSpellScript<GYMidTrigger>("spell_gy_mid_trigger");
 }

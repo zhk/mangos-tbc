@@ -95,35 +95,28 @@ void WorldSession::HandleTrainerListOpcode(WorldPacket& recv_data)
     SendTrainerList(guid);
 }
 
-void WorldSession::SendTrainerList(ObjectGuid guid) const
+
+static void SendTrainerSpellHelper(WorldPacket& data, TrainerSpell const* tSpell, TrainerSpellState state, float fDiscountMod, bool /*can_learn_primary_prof*/, uint32 reqLevel)
 {
-    std::string str = GetMangosString(LANG_NPC_TAINER_HELLO);
-    SendTrainerList(guid, str);
-}
+    bool primary_prof_first_rank = sSpellMgr.IsPrimaryProfessionFirstRankSpell(tSpell->learnedSpell);
 
+    SpellChainNode const* chain_node = sSpellMgr.GetSpellChainNode(tSpell->learnedSpell);
 
-static void SendTrainerSpellHelper(WorldPacket& data, TrainerSpell const* tSpell, TrainerSpellState state, float fDiscountMod, bool can_learn_primary_prof, uint32 reqLevel)
-{
-    bool primary_prof_first_rank = sSpellMgr.IsPrimaryProfessionFirstRankSpell(tSpell->spell);
-
-    SpellChainNode const* chain_node = sSpellMgr.GetSpellChainNode(tSpell->spell);
-
-    data << uint32(tSpell->spell);
+    data << uint32(tSpell->spell);                      // learned spell (or cast-spell in profession case)
     data << uint8(state == TRAINER_SPELL_GREEN_DISABLED ? TRAINER_SPELL_GREEN : state);
     data << uint32(floor(tSpell->spellCost * fDiscountMod));
 
-    data << uint32(primary_prof_first_rank && can_learn_primary_prof ? 1 : 0);
-    // primary prof. learn confirmation dialog
+    data << uint32(0); // spells don't cost talent points
     data << uint32(primary_prof_first_rank ? 1 : 0);    // must be equal prev. field to have learn button in enabled state
     data << uint8(reqLevel);
     data << uint32(tSpell->reqSkill);
     data << uint32(tSpell->reqSkillValue);
-    data << uint32(chain_node ? (chain_node->prev ? chain_node->prev : chain_node->req) : 0);
-    data << uint32(chain_node && chain_node->prev ? chain_node->req : 0);
+    data << uint32(!tSpell->IsCastable() && chain_node ? (chain_node->prev ? chain_node->prev : chain_node->req) : 0);
+    data << uint32(!tSpell->IsCastable() && chain_node && chain_node->prev ? chain_node->req : 0);
     data << uint32(0);
 }
 
-void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle) const
+void WorldSession::SendTrainerList(ObjectGuid guid) const
 {
     DEBUG_LOG("WORLD: SendTrainerList");
 
@@ -154,6 +147,16 @@ void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle)
     uint32 maxcount = (cSpells ? cSpells->spellList.size() : 0) + (tSpells ? tSpells->spellList.size() : 0);
     uint32 trainer_type = cSpells && cSpells->trainerType ? cSpells->trainerType : (tSpells ? tSpells->trainerType : 0);
 
+    std::string strTitle;
+    if (TrainerGreeting const* data = sObjectMgr.GetTrainerGreetingData(guid.GetEntry()))
+    {
+        strTitle = data->text;
+        int loc_idx = GetSessionDbLocaleIndex();
+        sObjectMgr.GetTrainerGreetingLocales(guid.GetEntry(), loc_idx, &strTitle);
+    }
+    else
+        strTitle = GetMangosString(LANG_NPC_TAINER_HELLO); // Fallback in case no trainer greeting found
+
     WorldPacket data(SMSG_TRAINER_LIST, 8 + 4 + 4 + maxcount * 38 + strTitle.size() + 1);
     data << ObjectGuid(guid);
     data << uint32(trainer_type);
@@ -169,15 +172,15 @@ void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle)
 
     if (cSpells)
     {
-        for (TrainerSpellMap::const_iterator itr = cSpells->spellList.begin(); itr != cSpells->spellList.end(); ++itr)
+        for (const auto& itr : cSpells->spellList)
         {
-            TrainerSpell const* tSpell = &itr->second;
+            TrainerSpell const* tSpell = &itr.second;
 
             uint32 reqLevel = 0;
-            if (!_player->IsSpellFitByClassAndRace(tSpell->spell, &reqLevel))
+            if (!_player->IsSpellFitByClassAndRace(tSpell->learnedSpell, &reqLevel))
                 continue;
 
-            if (tSpell->conditionId && !sObjectMgr.IsPlayerMeetToCondition(tSpell->conditionId, GetPlayer(), unit->GetMap(), unit, CONDITION_FROM_TRAINER))
+            if (tSpell->conditionId && !sObjectMgr.IsConditionSatisfied(tSpell->conditionId, GetPlayer(), unit->GetMap(), unit, CONDITION_FROM_TRAINER))
                 continue;
 
             reqLevel = tSpell->isProvidedReqLevel ? tSpell->reqLevel : std::max(reqLevel, tSpell->reqLevel);
@@ -192,15 +195,15 @@ void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle)
 
     if (tSpells)
     {
-        for (TrainerSpellMap::const_iterator itr = tSpells->spellList.begin(); itr != tSpells->spellList.end(); ++itr)
+        for (const auto& itr : tSpells->spellList)
         {
-            TrainerSpell const* tSpell = &itr->second;
+            TrainerSpell const* tSpell = &itr.second;
 
             uint32 reqLevel = 0;
-            if (!_player->IsSpellFitByClassAndRace(tSpell->spell, &reqLevel))
+            if (!_player->IsSpellFitByClassAndRace(tSpell->learnedSpell, &reqLevel))
                 continue;
 
-            if (tSpell->conditionId && !sObjectMgr.IsPlayerMeetToCondition(tSpell->conditionId, GetPlayer(), unit->GetMap(), unit, CONDITION_FROM_TRAINER))
+            if (tSpell->conditionId && !sObjectMgr.IsConditionSatisfied(tSpell->conditionId, GetPlayer(), unit->GetMap(), unit, CONDITION_FROM_TRAINER))
                 continue;
 
             reqLevel = tSpell->isProvidedReqLevel ? tSpell->reqLevel : std::max(reqLevel, tSpell->reqLevel);
@@ -257,7 +260,7 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket& recv_data)
 
     // can't be learn, cheat? Or double learn with lags...
     uint32 reqLevel = 0;
-    if (!_player->IsSpellFitByClassAndRace(trainer_spell->spell, &reqLevel))
+    if (!_player->IsSpellFitByClassAndRace(trainer_spell->learnedSpell, &reqLevel))
         return;
 
     reqLevel = trainer_spell->isProvidedReqLevel ? trainer_spell->reqLevel : std::max(reqLevel, trainer_spell->reqLevel);
@@ -280,8 +283,12 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket& recv_data)
     data << uint32(0x016A);                                 // index from SpellVisualKit.dbc
     SendPacket(data);
 
-    // learn explicitly
-    _player->learnSpell(trainer_spell->spell, false);
+    // learn explicitly or cast explicitly
+    // TODO - Are these spells really cast correctly this way?
+    if (trainer_spell->IsCastable())
+        _player->CastSpell(_player, trainer_spell->spell, TRIGGERED_OLD_TRIGGERED);
+    else
+        _player->learnSpell(spellId, false);
 
     data.Initialize(SMSG_TRAINER_BUY_SUCCEEDED, 12);
     data << ObjectGuid(guid);
@@ -404,7 +411,7 @@ void WorldSession::SendSpiritResurrect() const
                 _player->GetPositionX(), _player->GetPositionY(), _player->GetPositionZ(), _player->GetMapId(), _player->GetTeam());
 
         if (corpseGrave != ghostGrave)
-            _player->TeleportTo(corpseGrave->map_id, corpseGrave->x, corpseGrave->y, corpseGrave->z, _player->GetOrientation());
+            _player->TeleportTo(corpseGrave->map_id, corpseGrave->x, corpseGrave->y, corpseGrave->z, corpseGrave->o);
         // or update at original position
         else
         {
@@ -425,7 +432,7 @@ void WorldSession::HandleBinderActivateOpcode(WorldPacket& recv_data)
     ObjectGuid npcGuid;
     recv_data >> npcGuid;
 
-    if (!GetPlayer()->IsInWorld() || !GetPlayer()->isAlive())
+    if (!GetPlayer()->IsInWorld() || !GetPlayer()->IsAlive())
         return;
 
     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(npcGuid, UNIT_NPC_FLAG_INNKEEPER);
@@ -490,7 +497,7 @@ void WorldSession::SendStablePet(ObjectGuid guid) const
     PetSaveMode firstSlot = PET_SAVE_FIRST_STABLE_SLOT;     // have to be changed to PET_SAVE_AS_CURRENT if pet is currently temp unsummoned
 
     // not let move dead pet in slot
-    if (pet && pet->isAlive() && pet->getPetType() == HUNTER_PET)
+    if (pet && pet->IsAlive() && pet->getPetType() == HUNTER_PET)
     {
         data << uint32(pet->GetCharmInfo()->GetPetNumber());
         data << uint32(pet->GetEntry());
@@ -597,7 +604,7 @@ void WorldSession::HandleStablePet(WorldPacket& recv_data)
 
     recv_data >> npcGUID;
 
-    if (!GetPlayer()->isAlive())
+    if (!GetPlayer()->IsAlive())
     {
         SendStableResult(STABLE_ERR_STABLE);
         return;
@@ -615,7 +622,7 @@ void WorldSession::HandleStablePet(WorldPacket& recv_data)
     if (pet)
     {
         bool stop = false;
-        if (!pet->isAlive())
+        if (!pet->IsAlive())
         {
             _player->SendPetTameFailure(PETTAME_DEAD);
             stop = true;
@@ -635,7 +642,7 @@ void WorldSession::HandleStablePet(WorldPacket& recv_data)
     }
     else
     {
-        SpellCastResult loadResult = Pet::TryLoadFromDB(_player, 0, 0, _player->GetTemporaryUnsummonedPetNumber() ? true : false, HUNTER_PET);
+        SpellCastResult loadResult = Pet::TryLoadFromDB(_player, 0, 0, _player->GetTemporaryUnsummonedPetNumber() != 0, HUNTER_PET);
         if (loadResult != SPELL_CAST_OK)
         {
             if (loadResult == SPELL_FAILED_TARGETS_DEAD)
@@ -746,7 +753,7 @@ void WorldSession::HandleUnstablePet(WorldPacket& recv_data)
     if (pet)
     {
         bool stop = false;
-        if (!pet->isAlive())
+        if (!pet->IsAlive())
         {
             _player->SendPetTameFailure(PETTAME_DEAD);
             stop = true;
@@ -769,7 +776,7 @@ void WorldSession::HandleUnstablePet(WorldPacket& recv_data)
     else
     {
         // try to find if pet is actually temporary unsummoned
-        SpellCastResult loadResult = Pet::TryLoadFromDB(_player, 0, 0, _player->GetTemporaryUnsummonedPetNumber() ? true : false, HUNTER_PET);
+        SpellCastResult loadResult = Pet::TryLoadFromDB(_player, 0, 0, _player->GetTemporaryUnsummonedPetNumber() != 0, HUNTER_PET);
         if (loadResult != SPELL_CAST_OK)
         {
             if (loadResult == SPELL_FAILED_TARGETS_DEAD)
@@ -869,7 +876,7 @@ void WorldSession::HandleStableSwapPet(WorldPacket& recv_data)
     if (pet)
     {
         bool stop = false;
-        if (!pet->isAlive())
+        if (!pet->IsAlive())
         {
             _player->SendPetTameFailure(PETTAME_DEAD);
             stop = true;
@@ -889,7 +896,7 @@ void WorldSession::HandleStableSwapPet(WorldPacket& recv_data)
     }
     else
     {
-        SpellCastResult loadResult = Pet::TryLoadFromDB(_player, 0, 0, _player->GetTemporaryUnsummonedPetNumber() ? true : false, HUNTER_PET);
+        SpellCastResult loadResult = Pet::TryLoadFromDB(_player, 0, 0, _player->GetTemporaryUnsummonedPetNumber() != 0, HUNTER_PET);
         if (loadResult != SPELL_CAST_OK)
         {
             if (loadResult == SPELL_FAILED_TARGETS_DEAD)

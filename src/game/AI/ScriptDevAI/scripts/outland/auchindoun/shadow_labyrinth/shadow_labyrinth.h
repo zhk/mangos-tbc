@@ -20,9 +20,10 @@ enum
     NPC_HELLMAW             = 18731,
     NPC_VORPIL              = 18732,
     NPC_CABAL_RITUALIST     = 18794,
+    NPC_CONTAINMENT_BEAM    = 21159,
 
     GO_REFECTORY_DOOR       = 183296,                       // door opened when blackheart the inciter dies
-    GO_SCREAMING_HALL_DOOR  = 183295,                       // door opened when grandmaster vorpil dies
+    GO_SCREAMING_HALL_DOOR  = 183295,                       // door opened when grandmaster vorpil dies and player comes in range
 
     SAY_HELLMAW_INTRO       = -1555000,
 
@@ -49,7 +50,7 @@ class instance_shadow_labyrinth : public ScriptedInstance
         const char* Save() const override { return m_strInstData.c_str(); }
         void Load(const char* chrIn) override;
 
-        bool IsHellmawUnbanished() { return m_sRitualistsAliveGUIDSet.empty(); }
+        bool IsHellmawUnbanished() const { return m_sRitualistsAliveGUIDSet.empty(); }
 
     private:
         uint32 m_auiEncounter[MAX_ENCOUNTER];

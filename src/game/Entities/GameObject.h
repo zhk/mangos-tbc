@@ -79,7 +79,7 @@ struct GameObjectInfo
             uint32 gossipID;                                //3
             uint32 customAnim;                              //4
             uint32 noDamageImmune;                          //5
-            uint32 openTextID;                              //6 can be used to replace castBarCaption?
+            int32 openTextID;                               //6 can be used to replace castBarCaption?
             uint32 losOK;                                   //7
             uint32 allowMounted;                            //8
             uint32 large;                                   //9
@@ -93,7 +93,7 @@ struct GameObjectInfo
             uint32 consumable;                              //3
             uint32 minSuccessOpens;                         //4
             uint32 maxSuccessOpens;                         //5
-            uint32 eventId;                                 //6 lootedEvent
+            int32 eventId;                                  //6 lootedEvent
             uint32 linkedTrapId;                            //7
             uint32 questId;                                 //8 not used currently but store quest required for GO activation for player
             uint32 level;                                   //9
@@ -120,16 +120,16 @@ struct GameObjectInfo
         {
             uint32 lockId;                                  //0 -> Lock.dbc
             uint32 level;                                   //1
-            uint32 radius;                                  //2 radius for trap activation
+            uint32 diameter;                                //2 radius for trap activation
             uint32 spellId;                                 //3
             uint32 charges;                                 //4 need respawn (if > 0)
             uint32 cooldown;                                //5 time in secs
-            uint32 autoCloseTime;                           //6
+            int32 autoCloseTime;                            //6
             uint32 startDelay;                              //7
             uint32 serverOnly;                              //8
             uint32 stealthed;                               //9
             uint32 large;                                   //10
-            uint32 stealthAffected;                         //11
+            uint32 invisible;                               //11
             uint32 openTextID;                              //12 can be used to replace castBarCaption?
             uint32 closeTextID;                             //13
         } trap;
@@ -162,12 +162,12 @@ struct GameObjectInfo
         struct
         {
             uint32 lockId;                                  //0 -> Lock.dbc
-            uint32 questId;                                 //1
+            int32 questId;                                  //1
             uint32 eventId;                                 //2
             uint32 autoCloseTime;                           //3
             uint32 customAnim;                              //4
             uint32 consumable;                              //5
-            uint32 cooldown;                                //6
+            int32 cooldown;                                 //6
             uint32 pageId;                                  //7
             uint32 language;                                //8
             uint32 pageMaterial;                            //9
@@ -256,8 +256,11 @@ struct GameObjectInfo
         struct
         {
             uint32 spellId;                                 //0
-            uint32 charges;                                 //1
+            int32 charges;                                  //1
             uint32 partyOnly;                               //2
+            uint32 allowMounted;                            //3 Is usable while on mount/vehicle. (0/1)
+            uint32 large;                                   //4
+            uint32 conditionID1;                            //5
         } spellcaster;
         //23 GAMEOBJECT_TYPE_MEETINGSTONE
         struct
@@ -334,7 +337,7 @@ struct GameObjectInfo
             uint32 conditionID1;                            //3
             uint32 auraID2;                                 //4
             uint32 conditionID2;                            //5
-            uint32 serverOnly;                              //6
+            int32 serverOnly;                               //6
         } auraGenerator;
         //31 GAMEOBJECT_TYPE_DUNGEON_DIFFICULTY
         struct
@@ -394,8 +397,22 @@ struct GameObjectInfo
     {
         switch (type)
         {
-            case GAMEOBJECT_TYPE_CHEST:  return !!chest.consumable;
-            case GAMEOBJECT_TYPE_GOOBER: return !!goober.consumable;
+            case GAMEOBJECT_TYPE_CHEST:  return chest.consumable != 0;
+            case GAMEOBJECT_TYPE_GOOBER: return goober.consumable != 0;
+            default: return false;
+        }
+    }
+
+    bool IsUsableMounted() const
+    {
+        switch (type)
+        {
+            case GAMEOBJECT_TYPE_MAILBOX: return true;
+            case GAMEOBJECT_TYPE_BARBER_CHAIR: return false;
+            case GAMEOBJECT_TYPE_QUESTGIVER: return questgiver.allowMounted != 0;
+            case GAMEOBJECT_TYPE_TEXT: return text.allowMounted != 0;
+            case GAMEOBJECT_TYPE_GOOBER: return goober.allowMounted != 0;
+            case GAMEOBJECT_TYPE_SPELLCASTER: return spellcaster.allowMounted != 0;
             default: return false;
         }
     }
@@ -423,13 +440,27 @@ struct GameObjectInfo
     {
         switch (type)
         {
-            case GAMEOBJECT_TYPE_DOOR:       return !!door.noDamageImmune;
-            case GAMEOBJECT_TYPE_BUTTON:     return !!button.noDamageImmune;
-            case GAMEOBJECT_TYPE_QUESTGIVER: return !!questgiver.noDamageImmune;
-            case GAMEOBJECT_TYPE_GOOBER:     return !!goober.noDamageImmune;
-            case GAMEOBJECT_TYPE_FLAGSTAND:  return !!flagstand.noDamageImmune;
-            case GAMEOBJECT_TYPE_FLAGDROP:   return !!flagdrop.noDamageImmune;
+            case GAMEOBJECT_TYPE_DOOR:       return door.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_BUTTON:     return button.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_GOOBER:     return goober.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_FLAGSTAND:  return flagstand.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_FLAGDROP:   return flagdrop.noDamageImmune != 0;
             default: return true;
+        }
+    }
+
+    bool CannotBeUsedUnderImmunity() const // Cannot be used/activated/looted by players under immunity effects (example: Divine Shield)
+    {
+        switch (type)
+        {
+            case GAMEOBJECT_TYPE_DOOR:       return door.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_BUTTON:     return button.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_QUESTGIVER: return questgiver.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_CHEST:      return true;                           // All chests cannot be opened while immune on 3.3.5a
+            case GAMEOBJECT_TYPE_GOOBER:     return goober.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_FLAGSTAND:  return flagstand.noDamageImmune != 0;
+            case GAMEOBJECT_TYPE_FLAGDROP:   return flagdrop.noDamageImmune != 0;
+            default: return false;
         }
     }
 
@@ -501,6 +532,22 @@ struct GameObjectInfo
             default: return 0;
         }
     }
+
+    bool IsLargeGameObject() const
+    {
+        switch (type)
+        {
+            case GAMEOBJECT_TYPE_BUTTON:            return button.large != 0;
+            case GAMEOBJECT_TYPE_QUESTGIVER:        return questgiver.large != 0;
+            case GAMEOBJECT_TYPE_GENERIC:           return _generic.large != 0;
+            case GAMEOBJECT_TYPE_TRAP:              return trap.large != 0;
+            case GAMEOBJECT_TYPE_SPELL_FOCUS:       return spellFocus.large != 0;
+            case GAMEOBJECT_TYPE_GOOBER:            return goober.large != 0;
+            case GAMEOBJECT_TYPE_SPELLCASTER:       return spellcaster.large != 0;
+            case GAMEOBJECT_TYPE_CAPTURE_POINT:     return capturePoint.large != 0;
+            default: return false;
+        }
+    }
 };
 
 // GCC have alternative #pragma pack() syntax and old gcc version not support pack(pop), also any gcc version not support it at some platform
@@ -544,7 +591,15 @@ struct GameObjectData
     uint32 animprogress;
     GOState go_state;
     uint8 spawnMask;
+    uint16 gameEvent;
+    uint16 GuidPoolId;
+    uint16 EntryPoolId;
+    uint16 OriginalZoneId;
+
     uint32 GetRandomRespawnTime() const { return urand(uint32(spawntimesecsmin), uint32(spawntimesecsmax)); }
+
+    // return false if it should be handled by GameEventMgr or PoolMgr
+    bool IsNotPartOfPoolOrEvent() const { return (!gameEvent && !GuidPoolId && !EntryPoolId); }
 };
 
 // For containers:  [GO_NOT_READY]->GO_READY (close)->GO_ACTIVATED (open) ->GO_JUST_DEACTIVATED->GO_READY        -> ...
@@ -586,6 +641,18 @@ class Unit;
 class GameObjectModel;
 struct GameObjectDisplayInfoEntry;
 
+struct QuaternionData
+{
+    float x, y, z, w;
+
+    QuaternionData() : x(0.0f), y(0.0f), z(0.0f), w(1.0f) { }
+    QuaternionData(float X, float Y, float Z, float W) : x(X), y(Y), z(Z), w(W) { }
+
+    bool isUnit() const;
+    void toEulerAnglesZYX(float& Z, float& Y, float& X) const;
+    static QuaternionData fromEulerAnglesZYX(float Z, float Y, float X);
+};
+
 // 5 sec for bobber catch
 #define FISHING_BOBBER_READY_TIME 5
 
@@ -602,7 +669,7 @@ class GameObject : public WorldObject
 
         bool Create(uint32 guidlow, uint32 name_id, Map* map, float x, float y, float z, float ang,
                     float rotation0 = 0.0f, float rotation1 = 0.0f, float rotation2 = 0.0f, float rotation3 = 0.0f, uint32 animprogress = GO_ANIMPROGRESS_DEFAULT, GOState go_state = GO_STATE_READY);
-        void Update(uint32 update_diff, uint32 p_time) override;
+        void Update(const uint32 diff) override;
         GameObjectInfo const* GetGOInfo() const;
 
         bool IsTransport() const;
@@ -610,9 +677,11 @@ class GameObject : public WorldObject
         bool HasStaticDBSpawnData() const;                  // listed in `gameobject` table and have fixed in DB guid
 
         void UpdateRotationFields(float rotation2 = 0.0f, float rotation3 = 0.0f);
+        QuaternionData GetWorldRotation() const; // compatibility with wotlk
+        QuaternionData const GetLocalRotation() const;
 
         // overwrite WorldObject function for proper name localization
-        const char* GetNameForLocaleIdx(int32 locale_idx) const override;
+        const char* GetNameForLocaleIdx(int32 loc_idx) const override;
 
         void SaveToDB() const;
         void SaveToDB(uint32 mapid, uint8 spawnMask) const;
@@ -637,24 +706,25 @@ class GameObject : public WorldObject
             time_t now = time(nullptr);
             if (m_respawnTime > now)
                 return m_respawnTime;
-            else
-                return now;
+            return now;
         }
 
         void SetRespawnTime(time_t respawn)
         {
             m_respawnTime = respawn > 0 ? time(nullptr) + respawn : 0;
-            m_respawnDelayTime = respawn > 0 ? uint32(respawn) : 0;
+            m_respawnDelay = respawn > 0 ? uint32(respawn) : 0;
         }
         void Respawn();
-        bool isSpawned() const
+        bool IsSpawned() const
         {
-            return m_respawnDelayTime == 0 ||
+            return m_respawnDelay == 0 ||
                    (m_respawnTime > 0 && !m_spawnedByDefault) ||
                    (m_respawnTime == 0 && m_spawnedByDefault);
         }
-        bool isSpawnedByDefault() const { return m_spawnedByDefault; }
-        uint32 GetRespawnDelay() const { return m_respawnDelayTime; }
+        bool IsSpawnedByDefault() const { return m_spawnedByDefault; }
+        uint32 GetRespawnDelay() const { return m_respawnDelay; }
+        void SetRespawnDelay(uint32 delay, bool once = false) { m_respawnDelay = delay; m_respawnOverriden = true; m_respawnOverrideOnce = once; }
+        void SetForcedDespawn() { m_forcedDespawn = true; };
         void Refresh();
         void Delete();
 
@@ -673,12 +743,10 @@ class GameObject : public WorldObject
         uint32 GetDisplayId() const { return GetUInt32Value(GAMEOBJECT_DISPLAYID); }
         void SetDisplayId(uint32 modelId);
 
-        float GetObjectBoundingRadius() const override;     // overwrite WorldObject version
-
         void Use(Unit* user);
 
-        LootState getLootState() const { return m_lootState; }
-        void SetLootState(LootState s);
+        LootState GetLootState() const { return m_lootState; }
+        void SetLootState(LootState state);
 
         void AddToSkillupList(Player* player);
         bool IsInSkillupList(Player* player) const;
@@ -707,8 +775,9 @@ class GameObject : public WorldObject
         uint32 GetLootGroupRecipientId() const { return m_lootGroupRecipientId; }
         Player* GetLootRecipient() const;                   // use group cases as prefered
         Group* GetGroupLootRecipient() const;
-        bool HasLootRecipient() const { return !!m_lootGroupRecipientId || !!m_lootRecipientGuid; }
-        bool IsGroupLootRecipient() const { return !!m_lootGroupRecipientId; }
+        bool HasLootRecipient() const { return m_lootGroupRecipientId || !m_lootRecipientGuid.IsEmpty(); }
+        bool IsGroupLootRecipient() const { return m_lootGroupRecipientId != 0; }
+
         void SetLootRecipient(Unit* pUnit);
         Player* GetOriginalLootRecipient() const;           // ignore group changes/etc, not for looting
 
@@ -719,19 +788,18 @@ class GameObject : public WorldObject
         // 0 = use `gameobject`.`spawntimesecs`
         void ResetDoorOrButton();
 
-        bool IsHostileTo(Unit const* unit) const override;
-        bool IsFriendlyTo(Unit const* unit) const override;
-
         ReputationRank GetReactionTo(Unit const* unit) const override;
 
         bool IsEnemy(Unit const* unit) const override;
         bool IsFriend(Unit const* unit) const override;
 
-        bool CanAttackSpell(Unit* target, SpellEntry const* spellInfo = nullptr, bool isAOE = false) const override;
-        bool CanAssistSpell(Unit* target, SpellEntry const* spellInfo = nullptr) const override;
+        bool CanAttackSpell(Unit const* target, SpellEntry const* spellInfo = nullptr, bool isAOE = false) const override;
+        bool CanAssistSpell(Unit const* target, SpellEntry const* spellInfo = nullptr) const override;
 
-        void SummonLinkedTrapIfAny() const;
+        GameObject* SummonLinkedTrapIfAny() const;
         void TriggerLinkedGameObject(Unit* target) const;
+        GameObject* GetLinkedTrap();
+        void SetLinkedTrap(GameObject* linkedTrap) { m_linkedTrap = linkedTrap->GetObjectGuid(); }
 
         bool isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool inVisibleList) const override;
 
@@ -743,20 +811,29 @@ class GameObject : public WorldObject
         float GetCapturePointSliderValue() const { return m_captureSlider; }
 
         float GetInteractionDistance() const;
+        float GetCollisionHeight() const override { return 1.f; } // to get away with ground collision
 
         GridReference<GameObject>& GetGridRef() { return m_gridRef; }
 
         uint32 GetScriptId() const;
         void AIM_Initialize();
         void OnEventHappened(uint16 eventId, bool activate, bool resume) override { return AI()->OnEventHappened(eventId, activate, resume); }
-        GameObjectAI* AI() { return m_AI.get(); }
+        GameObjectAI* AI() const { return m_AI.get(); }
 
         GameObjectModel* m_model;
+
+        bool IsAtInteractDistance(Position const& pos, float radius) const;
+        bool IsAtInteractDistance(Player const* player, uint32 maxRange = 0) const;
+
+        SpellEntry const* GetSpellForLock(Player const* player) const;
 
     protected:
         uint32      m_spellId;
         time_t      m_respawnTime;                          // (secs) time of next respawn (or despawn if GO have owner()),
-        uint32      m_respawnDelayTime;                     // (secs) if 0 then current GO state no dependent from timer
+        uint32      m_respawnDelay;                     // (secs) if 0 then current GO state no dependent from timer
+        bool        m_respawnOverriden;
+        bool        m_respawnOverrideOnce;
+        bool        m_forcedDespawn;
         LootState   m_lootState;
         bool        m_spawnedByDefault;
         time_t      m_cooldownTime;                         // used as internal reaction delay time store (not state change reaction).
@@ -795,6 +872,8 @@ class GameObject : public WorldObject
         uint32 m_delayedActionTimer;                        // used for delayed GO actions
 
         ObjectGuid m_actionTarget;                          // used for setting target of Summoning rituals
+
+        ObjectGuid m_linkedTrap;
 
         std::unique_ptr<GameObjectAI> m_AI;
 

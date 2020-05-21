@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Blackrock Depths
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 enum
 {
@@ -51,7 +51,7 @@ struct boss_high_interrogator_gerstahnAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // ShadowWordPain_Timer
@@ -100,16 +100,14 @@ struct boss_high_interrogator_gerstahnAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_high_interrogator_gerstahn(Creature* pCreature)
+UnitAI* GetAI_boss_high_interrogator_gerstahn(Creature* pCreature)
 {
     return new boss_high_interrogator_gerstahnAI(pCreature);
 }
 
 void AddSC_boss_high_interrogator_gerstahn()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_high_interrogator_gerstahn";
     pNewScript->GetAI = &GetAI_boss_high_interrogator_gerstahn;
     pNewScript->RegisterSelf();

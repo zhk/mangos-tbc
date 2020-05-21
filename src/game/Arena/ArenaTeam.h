@@ -146,24 +146,23 @@ class ArenaTeam
         size_t GetMembersSize() const         { return m_members.size(); }
         size_t GetMaxMembersSize() const      { return size_t(GetType() * 2); }
         bool   Empty() const                  { return m_members.empty(); }
-        MemberList::iterator m_membersBegin() { return m_members.begin(); }
-        MemberList::iterator m_membersEnd()   { return m_members.end(); }
+        MemberList& GetMembers()              { return m_members; }
         bool HaveMember(ObjectGuid guid) const;
 
         ArenaTeamMember* GetMember(ObjectGuid guid)
         {
-            for (MemberList::iterator itr = m_members.begin(); itr != m_members.end(); ++itr)
-                if (itr->guid == guid)
-                    return &(*itr);
+            for (auto& m_member : m_members)
+                if (m_member.guid == guid)
+                    return &m_member;
 
             return nullptr;
         }
 
         ArenaTeamMember* GetMember(const std::string& name)
         {
-            for (MemberList::iterator itr = m_members.begin(); itr != m_members.end(); ++itr)
-                if (itr->name == name)
-                    return &(*itr);
+            for (auto& m_member : m_members)
+                if (m_member.name == name)
+                    return &m_member;
 
             return nullptr;
         }
@@ -202,6 +201,8 @@ class ArenaTeam
 
         void FinishWeek();
         void FinishGame(int32 mod);
+
+        void FinishSeason();
 
     protected:
 

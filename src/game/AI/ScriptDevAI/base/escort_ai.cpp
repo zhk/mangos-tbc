@@ -9,9 +9,10 @@ SDComment:
 SDCategory: Npc
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
-#include "../system/system.h"
+#include "AI/ScriptDevAI/system/system.h"
+#include "MotionGenerators/WaypointManager.h"
 
 const float MAX_PLAYER_DISTANCE = 66.0f;
 
@@ -21,7 +22,8 @@ npc_escortAI::npc_escortAI(Creature* creature) : ScriptedAI(creature),
     m_questForEscort(nullptr),
     m_isRunning(false),
     m_canInstantRespawn(false),
-    m_canReturnToStart(false)
+    m_canReturnToStart(false),
+    m_waypointPathID(0)
 {}
 
 void npc_escortAI::GetAIInformation(ChatHandler& reader)
@@ -53,7 +55,7 @@ bool npc_escortAI::AssistPlayerInCombat(Unit* who)
     if (!HasEscortState(STATE_ESCORT_ESCORTING))
         return false;
 
-    if (!who->getVictim())
+    if (!who->GetVictim())
         return false;
 
     // experimental (unknown) flag not present
@@ -65,7 +67,7 @@ bool npc_escortAI::AssistPlayerInCombat(Unit* who)
         return false;
 
     // victim of pWho is not a player
-    if (!who->getVictim()->GetBeneficiaryPlayer())
+    if (!who->GetVictim()->GetBeneficiaryPlayer())
         return false;
 
     // never attack friendly
@@ -76,17 +78,13 @@ bool npc_escortAI::AssistPlayerInCombat(Unit* who)
     if (m_creature->IsWithinDistInMap(who, MAX_PLAYER_DISTANCE) && m_creature->IsWithinLOSInMap(who))
     {
         // already fighting someone?
-        if (!m_creature->getVictim())
+        if (!m_creature->GetVictim())
         {
             AttackStart(who);
             return true;
         }
-        else
-        {
-            who->SetInCombatWith(m_creature);
-            m_creature->AddThreat(who);
-            return true;
-        }
+        m_creature->EngageInCombatWith(who);
+        return true;
     }
 
     return false;
@@ -102,25 +100,11 @@ void npc_escortAI::JustDied(Unit* /*killer*/)
 
 void npc_escortAI::FailQuestForPlayerAndGroup()
 {
+    if (!m_questForEscort)
+        return;
+
     if (Player* player = GetPlayerForEscort())
-    {
-        if (Group* group = player->GetGroup())
-        {
-            for (GroupReference* ref = group->GetFirstMember(); ref != nullptr; ref = ref->next())
-            {
-                if (Player* member = ref->getSource())
-                {
-                    if (member->GetQuestStatus(m_questForEscort->GetQuestId()) == QUEST_STATUS_INCOMPLETE)
-                        member->FailQuest(m_questForEscort->GetQuestId());
-                }
-            }
-        }
-        else
-        {
-            if (player->GetQuestStatus(m_questForEscort->GetQuestId()) == QUEST_STATUS_INCOMPLETE)
-                player->FailQuest(m_questForEscort->GetQuestId());
-        }
-    }
+        player->FailQuestForGroup(m_questForEscort->GetQuestId());
 }
 
 void npc_escortAI::CorpseRemoved(uint32& /*respawnDelay*/)
@@ -156,12 +140,16 @@ bool npc_escortAI::IsPlayerOrGroupInRange()
 void npc_escortAI::UpdateAI(const uint32 diff)
 {
     // Check if player or any member of his group is within range
-    if (HasEscortState(STATE_ESCORT_ESCORTING) && m_playerGuid && !m_creature->getVictim() && !HasEscortState(STATE_ESCORT_RETURNING))
+    if (m_questForEscort && HasEscortState(STATE_ESCORT_ESCORTING) && m_playerGuid && !m_creature->GetVictim() && !HasEscortState(STATE_ESCORT_RETURNING))
     {
         if (m_playerCheckTimer < diff)
         {
             if (!HasEscortState(STATE_ESCORT_PAUSED) && !IsPlayerOrGroupInRange())
             {
+                // set the quest status as failed
+                FailQuestForPlayerAndGroup();
+
+                // TODO: i am not sure this is correct, isn't that the creature should continue until it get killed?
                 debug_log("SD2: EscortAI failed because player/group was to far away or not found");
 
                 if (m_canInstantRespawn)
@@ -187,7 +175,7 @@ void npc_escortAI::UpdateAI(const uint32 diff)
 void npc_escortAI::UpdateEscortAI(const uint32 /*diff*/)
 {
     // Check if we have a current target
-    if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+    if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         return;
 
     DoMeleeAttackIfReady();
@@ -233,7 +221,6 @@ void npc_escortAI::SetCurrentWaypoint(uint32 pointId)
     if (!m_creature->GetMotionMaster()->SetNextWaypoint(pointId))
     {
         script_error_log("EscortAI for %s current waypoint tried to set to id %u, but doesn't exist in this path", m_creature->GetGuidStr().c_str(), pointId);
-        return;
     }
 }
 
@@ -259,7 +246,7 @@ void npc_escortAI::SetRun(bool run)
 // TODO: get rid of this many variables passed in function.
 void npc_escortAI::Start(bool run, const Player* player, const Quest* quest, bool instantRespawn, bool canLoopPath)
 {
-    if (m_creature->getVictim())
+    if (m_creature->GetVictim())
     {
         script_error_log("EscortAI attempt to Start while in combat for %s.", m_creature->GetScriptName().data());
         return;
@@ -271,7 +258,7 @@ void npc_escortAI::Start(bool run, const Player* player, const Quest* quest, boo
         return;
     }
 
-    if (!pSystemMgr.GetPathInfo(m_creature->GetEntry(), 1))
+    if (!sWaypointMgr.GetPathFromOrigin(m_creature->GetEntry(), m_creature->GetGUIDLow(), m_waypointPathID, PATH_FROM_EXTERNAL))
     {
         script_error_log("EscortAI attempt to start escorting for %s, but has no waypoints loaded.", m_creature->GetScriptName().data());
         return;
@@ -301,7 +288,7 @@ void npc_escortAI::Start(bool run, const Player* player, const Quest* quest, boo
 
     // Start moving along the path with 2500ms delay
     m_creature->GetMotionMaster()->Clear(false, true);
-    m_creature->GetMotionMaster()->MoveWaypoint(1, 3, 2500);
+    m_creature->GetMotionMaster()->MoveWaypoint(m_waypointPathID, PATH_FROM_EXTERNAL, 2500);
 
     JustStartedEscort();
 }
@@ -321,4 +308,9 @@ void npc_escortAI::SetEscortPaused(bool paused)
         RemoveEscortState(STATE_ESCORT_PAUSED);
         m_creature->clearUnitState(UNIT_STAT_WAYPOINT_PAUSED);
     }
+}
+
+void npc_escortAI::SetEscortWaypoints(uint32 pathId)
+{
+    m_waypointPathID = pathId;
 }

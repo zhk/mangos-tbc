@@ -29,7 +29,7 @@
 ////////////////// PathFinder //////////////////
 PathFinder::PathFinder(const Unit* owner) :
     m_polyLength(0), m_type(PATHFIND_BLANK),
-    m_useStraightPath(false), m_forceDestination(false), m_pointPathLimit(MAX_POINT_PATH_LENGTH),
+    m_useStraightPath(false), m_forceDestination(false), m_pointPathLimit(MAX_POINT_PATH_LENGTH), // TODO: Fix legitimate long paths
     m_sourceUnit(owner), m_navMesh(nullptr), m_navMeshQuery(nullptr)
 {
     DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ PathFinder::PathInfo for %u \n", m_sourceUnit->GetGUIDLow());
@@ -50,20 +50,24 @@ PathFinder::~PathFinder()
     DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ PathFinder::~PathInfo() for %u \n", m_sourceUnit->GetGUIDLow());
 }
 
-bool PathFinder::calculate(float destX, float destY, float destZ, bool forceDest)
+bool PathFinder::calculate(float destX, float destY, float destZ, bool forceDest/* = false*/)
 {
-    if (!MaNGOS::IsValidMapCoord(destX, destY, destZ))
-        return false;
-
     float x, y, z;
     m_sourceUnit->GetPosition(x, y, z);
-    if (!MaNGOS::IsValidMapCoord(x, y, z))
+
+    return calculate(Vector3(x, y, z), Vector3(destX, destY, destZ), forceDest);
+}
+
+bool PathFinder::calculate(const Vector3& start, const Vector3& dest, bool forceDest/* = false*/)
+{
+    if (!MaNGOS::IsValidMapCoord(dest.x, dest.y, dest.z))
         return false;
 
-    Vector3 start(x, y, z);
+    if (!MaNGOS::IsValidMapCoord(start.x, start.y, start.z))
+        return false;
+
     setStartPosition(start);
 
-    Vector3 dest(destX, destY, destZ);
     setEndPosition(dest);
 
     m_forceDestination = forceDest;
@@ -73,7 +77,7 @@ bool PathFinder::calculate(float destX, float destY, float destZ, bool forceDest
     // make sure navMesh works - we can run on map w/o mmap
     // check if the start and end point have a .mmtile loaded (can we pass via not loaded tile on the way?)
     if (!m_navMesh || !m_navMeshQuery || m_sourceUnit->hasUnitState(UNIT_STAT_IGNORE_PATHFINDING) ||
-            !HaveTile(start) || !HaveTile(dest))
+        !HaveTile(start) || !HaveTile(dest))
     {
         BuildShortcut();
         m_type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
@@ -174,17 +178,17 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
         DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: (startPoly == 0 || endPoly == 0)\n");
         BuildShortcut();
 
-        if (m_sourceUnit->GetTypeId() == TYPEID_UNIT)
-        {
-            // Check for swimming or flying shortcut
-            if ((startPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsUnderWater(startPos.x, startPos.y, startPos.z)) ||
-                    (endPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsUnderWater(endPos.x, endPos.y, endPos.z)))
-                m_type = ((Creature*)m_sourceUnit)->CanSwim() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
-            else
-                m_type = ((Creature*)m_sourceUnit)->CanFly() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
-        }
+        // Check for swimming or flying shortcut
+        if ((startPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z)) ||
+            (endPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z)))
+            m_type = m_sourceUnit->CanSwim() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
         else
-            m_type = PATHFIND_NOPATH;
+        {
+            if (m_sourceUnit->GetTypeId() != TYPEID_PLAYER)
+                m_type = m_sourceUnit->CanFly() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
+            else
+                m_type = PATHFIND_NOPATH;
+        }
 
         return;
     }
@@ -196,23 +200,18 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
         DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: farFromPoly distToStartPoly=%.3f distToEndPoly=%.3f\n", distToStartPoly, distToEndPoly);
 
         bool buildShotrcut = false;
-        if (m_sourceUnit->GetTypeId() == TYPEID_UNIT)
+        Vector3 p = (distToStartPoly > 7.0f) ? startPos : endPos;
+        if (m_sourceUnit->GetTerrain()->IsUnderWater(p.x, p.y, p.z))
         {
-            Creature* owner = (Creature*)m_sourceUnit;
-
-            Vector3 p = (distToStartPoly > 7.0f) ? startPos : endPos;
-            if (m_sourceUnit->GetTerrain()->IsUnderWater(p.x, p.y, p.z))
-            {
-                DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: underWater case\n");
-                if (owner->CanSwim())
-                    buildShotrcut = true;
-            }
-            else
-            {
-                DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: flying case\n");
-                if (owner->CanFly())
-                    buildShotrcut = true;
-            }
+            DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: underWater case\n");
+            if (m_sourceUnit->CanSwim())
+                buildShotrcut = true;
+        }
+        else
+        {
+            DEBUG_FILTER_LOG(LOG_FILTER_PATHFINDING, "++ BuildPolyPath :: flying case\n");
+            if (m_sourceUnit->CanFly())
+                buildShotrcut = true;
         }
 
         if (buildShotrcut)
@@ -221,18 +220,15 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
             m_type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
             return;
         }
-        else
+        float closestPoint[VERTEX_SIZE];
+        // we may want to use closestPointOnPolyBoundary instead
+        if (dtStatusSucceed(m_navMeshQuery->closestPointOnPoly(endPoly, endPoint, closestPoint, nullptr)))
         {
-            float closestPoint[VERTEX_SIZE];
-            // we may want to use closestPointOnPolyBoundary instead
-            if (dtStatusSucceed(m_navMeshQuery->closestPointOnPoly(endPoly, endPoint, closestPoint, nullptr)))
-            {
-                dtVcopy(endPoint, closestPoint);
-                setActualEndPosition(Vector3(endPoint[2], endPoint[0], endPoint[1]));
-            }
-
-            m_type = PATHFIND_INCOMPLETE;
+            dtVcopy(endPoint, closestPoint);
+            setActualEndPosition(Vector3(endPoint[2], endPoint[0], endPoint[1]));
         }
+
+        m_type = PATHFIND_INCOMPLETE;
     }
 
     // *** poly path generating logic ***
@@ -257,7 +253,8 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
     // TODO: we can merge it with getPathPolyByPosition() loop
     bool startPolyFound = false;
     bool endPolyFound = false;
-    uint32 pathStartIndex, pathEndIndex;
+    uint32 pathStartIndex = 0;
+    uint32 pathEndIndex = 0;
 
     if (m_polyLength)
     {
@@ -548,8 +545,8 @@ void PathFinder::NormalizePath()
     if (!sWorld.getConfig(CONFIG_BOOL_PATH_FIND_NORMALIZE_Z))
         return;
 
-    for (uint32 i = 0; i < m_pathPoints.size(); ++i)
-        m_sourceUnit->UpdateAllowedPositionZ(m_pathPoints[i].x, m_pathPoints[i].y, m_pathPoints[i].z);
+    for (auto& m_pathPoint : m_pathPoints)
+        m_sourceUnit->UpdateAllowedPositionZ(m_pathPoint.x, m_pathPoint.y, m_pathPoint.z);
 }
 
 void PathFinder::BuildShortcut()
@@ -601,7 +598,7 @@ void PathFinder::updateFilter()
 {
     // allow creatures to cheat and use different movement types if they are moved
     // forcefully into terrain they can't normally move in
-    if (m_sourceUnit->IsInWater() || m_sourceUnit->IsUnderWater())
+    if (m_sourceUnit->IsInWater() || m_sourceUnit->IsUnderwater())
     {
         uint16 includedFlags = m_filter.getIncludeFlags();
         includedFlags |= getNavTerrain(m_sourceUnit->GetPositionX(),
@@ -764,8 +761,8 @@ dtStatus PathFinder::findSmoothPath(const float* startPos, const float* endPos,
         if (!getSteerTarget(iterPos, targetPos, SMOOTH_PATH_SLOP, polys, npolys, steerPos, steerPosFlag, steerPosRef))
             break;
 
-        const bool endOfPath = !!(steerPosFlag & DT_STRAIGHTPATH_END);
-        const bool offMeshConnection = !!(steerPosFlag & DT_STRAIGHTPATH_OFFMESH_CONNECTION);
+        const bool endOfPath = (steerPosFlag & DT_STRAIGHTPATH_END) != 0;
+        const bool offMeshConnection = (steerPosFlag & DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0;
 
         // Find movement delta.
         float delta[VERTEX_SIZE];
@@ -805,7 +802,7 @@ dtStatus PathFinder::findSmoothPath(const float* startPos, const float* endPos,
             }
             break;
         }
-        else if (offMeshConnection && inRangeYZX(iterPos, steerPos, SMOOTH_PATH_SLOP, 1.0f))
+        if (offMeshConnection && inRangeYZX(iterPos, steerPos, SMOOTH_PATH_SLOP, 1.0f))
         {
             // Advance the path up to and over the off-mesh connection.
             dtPolyRef prevRef = INVALID_POLYREF;

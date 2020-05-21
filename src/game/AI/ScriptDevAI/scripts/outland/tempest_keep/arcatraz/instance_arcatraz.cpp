@@ -21,7 +21,7 @@ SDComment: Mainly Harbringer Skyriss event
 SDCategory: Tempest Keep, The Arcatraz
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "arcatraz.h"
 
 /* Arcatraz encounters:
@@ -53,7 +53,7 @@ enum
     SPELL_TARGET_ALPHA              = 36856,
     SPELL_TARGET_DELTA              = 36857,
     SPELL_TARGET_GAMMA              = 36858,
-    SPELL_SIMPLE_TELEPORT           = 12980,
+    SPELL_SIMPLE_TELEPORT           = 12980, // TODO: Other mobs need to use it too
     SPELL_MIND_REND                 = 36859,
     SPELL_QUIET_SUICIDE             = 3617,
 
@@ -92,7 +92,8 @@ static const DialogueEntry aArcatrazDialogue[] =
 instance_arcatraz::instance_arcatraz(Map* pMap) : ScriptedInstance(pMap), DialogueHelper(aArcatrazDialogue),
     m_uiResetDelayTimer(0),
     m_uiEntranceEventTimer(0),
-    m_uiKilledWardens(0)
+    m_uiKilledWarders(0),
+    m_uiKilledDefenders(0)
 {
     Initialize();
 }
@@ -246,9 +247,9 @@ void instance_arcatraz::SetData(uint32 uiType, uint32 uiData)
                     {
                         Map::PlayerList const& PlayerList = instance->GetPlayers();
 
-                        for (Map::PlayerList::const_iterator itr = PlayerList.begin(); itr != PlayerList.end(); ++itr)
+                        for (const auto& itr : PlayerList)
                         {
-                            Player* pPlayer = itr->getSource();
+                            Player* pPlayer = itr.getSource();
                             if (pPlayer && pPlayer->GetQuestStatus(QUEST_TRIAL_OF_THE_NAARU_TENACITY) == QUEST_STATUS_INCOMPLETE)
                                 pPlayer->AreaExploredOrEventHappens(QUEST_TRIAL_OF_THE_NAARU_TENACITY);
                         }
@@ -335,10 +336,10 @@ void instance_arcatraz::Load(const char* chrIn)
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
                >> m_auiEncounter[4];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -428,16 +429,16 @@ void instance_arcatraz::JustDidDialogueStep(int32 iEntry)
 
 void instance_arcatraz::OnCreatureDeath(Creature* pCreature)
 {
-    if (pCreature->GetEntry() == NPC_ARCATRAZ_WARDEN || pCreature->GetEntry() == NPC_ARCATRAZ_DEFENDER)
-    {
-        ++m_uiKilledWardens;
+    if (pCreature->GetEntry() == NPC_ARCATRAZ_WARDER)
+        ++m_uiKilledWarders;
+    else if (pCreature->GetEntry() == NPC_ARCATRAZ_DEFENDER)
+        ++m_uiKilledDefenders;
 
-        // Stop the intro spawns when the wardens are killed
-        if (m_uiKilledWardens == MAX_WARDENS)
-        {
-            SetData(TYPE_ENTRANCE, DONE);
-            m_uiEntranceEventTimer = 0;
-        }
+    // Stop the intro spawns when the wardens are killed
+    if (m_uiKilledDefenders == MAX_DEFENDERS && m_uiKilledWarders == MAX_WARDERS)
+    {
+        SetData(TYPE_ENTRANCE, DONE);
+        m_uiEntranceEventTimer = 0;
     }
 }
 
@@ -467,11 +468,18 @@ void instance_arcatraz::Update(uint32 uiDiff)
 
             uint32 uiEntry = urand(0, 10) ? NPC_PROTEAN_HORROR : NPC_PROTEAN_NIGHTMARE;
 
+            // Protean Horrors stop spawning once 4 warders are killed
+            // Protean Nightmares stop spawning once 3 defenders are killed
+            if ((uiEntry == NPC_PROTEAN_HORROR && m_uiKilledWarders == MAX_WARDERS) || (uiEntry == NPC_PROTEAN_NIGHTMARE && m_uiKilledDefenders == MAX_DEFENDERS))
+            {
+                m_uiEntranceEventTimer = urand(0, 10) ? urand(2000, 3500) : urand(5000, 7000);
+                return;
+            }
+
             // Summon and move the intro creatures into combat positions
             if (Creature* pTemp = pPlayer->SummonCreature(uiEntry, aEntranceSpawnLoc[0], aEntranceSpawnLoc[1], aEntranceSpawnLoc[2], aEntranceSpawnLoc[3], TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 30000))
             {
-                pTemp->SetWalk(false);
-                pTemp->GetMotionMaster()->MovePoint(0, aEntranceMoveLoc[0], aEntranceMoveLoc[1], aEntranceMoveLoc[2]);
+                pTemp->GetMotionMaster()->MoveWaypoint(1);
             }
             m_uiEntranceEventTimer = urand(0, 10) ? urand(2000, 3500) : urand(5000, 7000);
         }
@@ -487,9 +495,7 @@ InstanceData* GetInstanceData_instance_arcatraz(Map* pMap)
 
 void AddSC_instance_arcatraz()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_arcatraz";
     pNewScript->GetInstanceData = &GetInstanceData_instance_arcatraz;
     pNewScript->RegisterSelf();

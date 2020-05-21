@@ -26,7 +26,7 @@ boss_mekgineer_steamrigger
 mob_steamrigger_mechanic
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "steam_vault.h"
 
 enum
@@ -44,7 +44,7 @@ enum
     SPELL_SUPER_SHRINK_RAY      = 31485,
     SPELL_SAW_BLADE             = 31486,
     SPELL_ELECTRIFIED_NET       = 35107,
-    // SPELL_ENRAGE_H            = 1,                       // current enrage spell not known
+    SPELL_BERSERK               = 26662,
 
     NPC_STEAMRIGGER_MECHANIC    = 17951,
 
@@ -153,7 +153,7 @@ struct boss_mekgineer_steamriggerAI : public ScriptedAI
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiShrinkTimer < uiDiff)
@@ -166,9 +166,9 @@ struct boss_mekgineer_steamriggerAI : public ScriptedAI
 
         if (m_uiSawBladeTimer < uiDiff)
         {
-            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1);
+            Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, nullptr, SELECT_FLAG_PLAYER);
             if (!pTarget)
-                pTarget = m_creature->getVictim();
+                pTarget = m_creature->GetVictim();
 
             if (pTarget)
             {
@@ -181,7 +181,7 @@ struct boss_mekgineer_steamriggerAI : public ScriptedAI
 
         if (m_uiElectrifiedNetTimer < uiDiff)
         {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_ELECTRIFIED_NET) == CAST_OK)
                     m_uiElectrifiedNetTimer = 10000;
@@ -195,7 +195,7 @@ struct boss_mekgineer_steamriggerAI : public ScriptedAI
         {
             if (m_uiMechanicTimer < uiDiff)
             {
-                m_creature->SummonCreature(NPC_STEAMRIGGER_MECHANIC, aSteamriggerSpawnLocs[2].m_fX, aSteamriggerSpawnLocs[2].m_fY, aSteamriggerSpawnLocs[2].m_fZ, 0, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 240000);
+                m_creature->SummonCreature(NPC_STEAMRIGGER_MECHANIC, aSteamriggerSpawnLocs[2].m_fX, aSteamriggerSpawnLocs[2].m_fY, aSteamriggerSpawnLocs[2].m_fZ, 0, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 5000);
                 m_uiMechanicTimer = 20000;
             }
             else
@@ -212,7 +212,7 @@ struct boss_mekgineer_steamriggerAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_boss_mekgineer_steamrigger(Creature* pCreature)
+UnitAI* GetAI_boss_mekgineer_steamrigger(Creature* pCreature)
 {
     return new boss_mekgineer_steamriggerAI(pCreature);
 }
@@ -268,23 +268,21 @@ struct mob_steamrigger_mechanicAI : public ScriptedAI
 
     void UpdateAI(const uint32 /*uiDiff*/) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_mob_steamrigger_mechanic(Creature* pCreature)
+UnitAI* GetAI_mob_steamrigger_mechanic(Creature* pCreature)
 {
     return new mob_steamrigger_mechanicAI(pCreature);
 }
 
 void AddSC_boss_mekgineer_steamrigger()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_mekgineer_steamrigger";
     pNewScript->GetAI = &GetAI_boss_mekgineer_steamrigger;
     pNewScript->RegisterSelf();

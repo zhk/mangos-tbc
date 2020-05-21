@@ -25,6 +25,7 @@
 #include "Entities/Player.h"
 #include "Globals/SharedDefines.h"
 #include <atomic>
+#include <string>
 
 enum ZoneIds
 {
@@ -39,6 +40,14 @@ enum ZoneIds
     ZONEID_BOTANICA     = 3847,
     ZONEID_ARCATRAZ     = 3848,
     ZONEID_MECHANAR     = 3849,
+};
+
+enum AreaIds
+{
+    AREAID_SKYGUARD_OUTPOST     = 3964,
+    AREAID_SHARTUUL_TRANSPORTER = 4008,
+    AREAID_DEATHS_DOOR          = 3831,
+    AREAID_THERAMORE_ISLE       = 513,
 };
 
 enum SpellId
@@ -63,7 +72,37 @@ enum Conditions
 
 enum Events
 {
+    CUSTOM_EVENT_YSONDRE_DIED,
+    CUSTOM_EVENT_LETHON_DIED,
+    CUSTOM_EVENT_EMERISS_DIED,
+    CUSTOM_EVENT_TAERAR_DIED,
     CUSTOM_EVENT_ADALS_SONG_OF_BATTLE,
+};
+
+enum SaveIds
+{
+    SAVE_ID_EMERALD_DRAGONS,
+    SAVE_ID_AHN_QIRAJ,
+    SAVE_ID_QUEL_DANAS,
+    SAVE_ID_EXPANSION_RELEASE,
+};
+
+enum GameEvents
+{
+    GAME_EVENT_BEFORE_THE_STORM = 100,
+    GAME_EVENT_QUEL_DANAS_PHASE_1 = 101,
+    // next 10 are reserved for quel danas - 110
+};
+
+// To be used
+struct AhnQirajData
+{
+    std::string GetData() { return ""; }
+};
+
+struct QuelDanasData
+{
+    std::string GetData() { return ""; }
 };
 
 // Intended for implementing server wide scripts, note: all behaviour must be safeguarded towards multithreading
@@ -73,41 +112,69 @@ class WorldState
         WorldState();
         virtual ~WorldState();
 
+        void Load();
+        void Save(SaveIds saveId);
+
         // Called when a gameobject is created or removed
-        virtual void HandleGameObjectUse(GameObject* go, Unit* user);
-        virtual void HandleGameObjectRevertState(GameObject* go);
+        void HandleGameObjectUse(GameObject* go, Unit* user);
+        void HandleGameObjectRevertState(GameObject* go);
 
-        // called when a player enters an outdoor pvp area
         void HandlePlayerEnterZone(Player* player, uint32 zoneId);
-
-        // called when player leaves an outdoor pvp area
         void HandlePlayerLeaveZone(Player* player, uint32 zoneId);
+
+        void HandlePlayerEnterArea(Player* player, uint32 areaId);
+        void HandlePlayerLeaveArea(Player* player, uint32 areaId);
 
         bool IsConditionFulfilled(uint32 conditionId, uint32 state) const;
         void HandleConditionStateChange(uint32 conditionId, uint32 state);
 
         void HandleExternalEvent(uint32 eventId);
+        void ExecuteOnAreaPlayers(uint32 areaId, std::function<void(Player*)> executor);
 
+        void Update(const uint32 diff);
+
+        // tbc section
         void BuffMagtheridonTeam(Team team);
         void DispelMagtheridonTeam(Team team);
 
         void BuffAdalsSongOfBattle();
         void DispelAdalsSongOfBattle();
 
-        void Update(const uint32 diff);
+        // Release events
+        uint8 GetExpansion() const { return m_expansion; }
+        bool SetExpansion(uint8 expansion);
     private:
+        std::map<uint32, GuidVector> m_areaPlayers;
+        std::map<uint32, std::atomic<uint32>> m_transportStates; // atomic to avoid having to lock
+
+        std::mutex m_mutex; // all World State operations are thread unsafe
+        uint32 m_saveTimer;
+
+        // vanilla section
+        bool IsDragonSpawned(uint32 entry);
+        void RespawnEmeraldDragons();
+
+        uint8 m_emeraldDragonsState;
+        uint32 m_emeraldDragonsTimer;
+        std::vector<uint32> m_emeraldDragonsChosenPositions;
+        AhnQirajData m_aqData;
+
+        // tbc section
         bool m_isMagtheridonHeadSpawnedHorde;
         bool m_isMagtheridonHeadSpawnedAlliance;
         ObjectGuid m_guidMagtheridonHeadHorde;
         ObjectGuid m_guidMagtheridonHeadAlliance;
         GuidVector m_magtheridonHeadPlayers;
 
-        std::map<uint32, std::atomic<uint32>> m_transportStates; // atomic to avoid having to lock
-
         GuidVector m_adalSongOfBattlePlayers;
         uint32 m_adalSongOfBattleTimer;
 
-        std::mutex m_mutex; // all World State operations are threat unsafe
+        QuelDanasData m_quelDanasData;
+
+        // Release Events
+        void StartExpansionEvent();
+
+        std::atomic<uint8> m_expansion;
 };
 
 #define sWorldState MaNGOS::Singleton<WorldState>::Instance()
